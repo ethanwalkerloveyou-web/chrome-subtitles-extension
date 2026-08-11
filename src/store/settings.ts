@@ -127,6 +127,25 @@ export const FONT_FAMILY_PRESETS = [
   { label: '宋体 / 衬线', value: '"Songti SC", SimSun, serif' },
 ] as const;
 
+/**
+ * 常见 OpenAI 兼容供应商的接口地址。
+ *
+ * 填错 Base URL 会得到 401「Key 格式不正确」这种看不出所以然的报错 ——
+ * 每家的 Key 只在自家地址上有效，所以直接给出正确地址比让人去翻文档强。
+ */
+export const BASE_URL_PRESETS = [
+  {
+    label: '阿里云百炼 / DashScope',
+    value: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  },
+  { label: 'DeepSeek', value: 'https://api.deepseek.com/v1' },
+  { label: 'OpenAI', value: 'https://api.openai.com/v1' },
+  { label: '月之暗面 Moonshot', value: 'https://api.moonshot.cn/v1' },
+  { label: '硅基流动 SiliconFlow', value: 'https://api.siliconflow.cn/v1' },
+  { label: '智谱 GLM', value: 'https://open.bigmodel.cn/api/paas/v4' },
+  { label: '本地 Ollama', value: 'http://localhost:11434/v1' },
+] as const;
+
 /** 各供应商的推荐模型。用户也可以直接手填任意 model id。 */
 export const MODEL_PRESETS: Record<
   ProviderId,
@@ -286,13 +305,18 @@ export function watchSettings(cb: (settings: Settings) => void): () => void {
 
 // ---------------------------------------------------------------- 派生
 
-/** 当前生效的 API Key / 模型，供翻译管线使用。 */
+/**
+ * 当前生效的 API Key / 模型，供翻译管线使用。
+ *
+ * 统一 trim：从网页或文档里复制 Key 极容易带上首尾空格或换行，
+ * 供应商那边会直接判成「Key 格式不正确」，报错还看不出是空格的问题。
+ */
 export function activeCredentials(llm: LlmSettings) {
   return {
     provider: llm.provider,
-    apiKey: llm.apiKeys[llm.provider],
-    model: llm.models[llm.provider],
-    baseUrl: llm.baseUrl,
+    apiKey: (llm.apiKeys[llm.provider] ?? '').trim(),
+    model: (llm.models[llm.provider] ?? '').trim(),
+    baseUrl: llm.baseUrl.trim(),
   };
 }
 

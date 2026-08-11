@@ -61,8 +61,7 @@ async function testOpenAiCompatible(
   });
 
   if (!res.ok) {
-    const body = await res.text();
-    return { ok: false, detail: `HTTP ${res.status} — ${body.slice(0, 200)}` };
+    return { ok: false, detail: describeHttpError(res.status, await res.text()) };
   }
 
   const data = (await res.json()) as {
@@ -86,6 +85,38 @@ async function handle(req: Request): Promise<TestConnectionResult> {
   } catch (err) {
     return { ok: false, detail: describeError(err) };
   }
+}
+
+/**
+ * 把 OpenAI 兼容供应商的错误响应翻成人话。
+ *
+ * 各家的错误体结构不一样，但基本都能在 error.message 或 message 里找到
+ * 实际原因。直接把整个 JSON 甩给用户，看不出问题出在哪。
+ */
+function describeHttpError(status: number, body: string): string {
+  let message = body.slice(0, 300);
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { message?: string };
+      message?: string;
+    };
+    message = parsed.error?.message ?? parsed.message ?? message;
+  } catch {
+    // 不是 JSON 就原样显示
+  }
+
+  const hint =
+    status === 401
+      ? 'Key 无效，或复制时带了空格/换行，或与 Base URL 不匹配'
+      : status === 403
+        ? '这个 Key 没有该模型的权限'
+        : status === 404
+          ? 'Base URL 或模型 ID 不对'
+          : status === 429
+            ? '触发限流或余额不足'
+            : '';
+
+  return hint ? `HTTP ${status}（${hint}）：${message}` : `HTTP ${status}：${message}`;
 }
 
 /** 把各种异常翻成用户能看懂的中文。 */

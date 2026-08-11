@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { sendMessage, type TestConnectionResult } from '../../messaging.ts';
 import {
+  BASE_URL_PRESETS,
   MODEL_PRESETS,
   type Effort,
   type LlmSettings,
@@ -33,6 +34,7 @@ export default function LlmSection({
   llm: LlmSettings;
   patch: (p: Partial<LlmSettings>) => void;
 }) {
+  const baseUrlListId = useId();
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<TestConnectionResult | null>(null);
 
@@ -93,22 +95,37 @@ export default function LlmSection({
       {!isAnthropic && (
         <Field
           label="Base URL"
-          hint="兼容 OpenAI 的接口地址，通常以 /v1 结尾"
+          hint="选一个预设，或手填。Key 只在对应家的地址上有效"
         >
-          <TextInput
-            value={llm.baseUrl}
-            onChange={(baseUrl) => patch({ baseUrl })}
-            placeholder="https://api.deepseek.com/v1"
-            monospace
-          />
+          <div className="model-combo">
+            <input
+              className="text-input is-mono"
+              list={baseUrlListId}
+              value={llm.baseUrl}
+              spellCheck={false}
+              autoComplete="off"
+              placeholder="https://api.deepseek.com/v1"
+              // trim：从文档里复制地址常带空格，供应商会直接 404 / 401
+              onChange={(e) => patch({ baseUrl: e.target.value.trim() })}
+            />
+            <datalist id={baseUrlListId}>
+              {BASE_URL_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </datalist>
+          </div>
         </Field>
       )}
 
       <Field label="API Key" hint="按供应商分别保存，切换回来不用重填">
         <TextInput
           value={llm.apiKeys[llm.provider]}
+          // trim：复制 Key 时带上的空格或换行会让供应商报「Key 格式不正确」，
+          // 那个报错完全看不出是空格的问题，所以在入口就清掉
           onChange={(key) =>
-            patch({ apiKeys: { ...llm.apiKeys, [llm.provider]: key } })
+            patch({ apiKeys: { ...llm.apiKeys, [llm.provider]: key.trim() } })
           }
           placeholder={isAnthropic ? 'sk-ant-...' : 'sk-...'}
           password
