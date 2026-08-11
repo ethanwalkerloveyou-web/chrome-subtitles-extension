@@ -23,9 +23,29 @@ interface PageState {
   tracks: TrackCandidate[];
   /** 截获到的播放器 timedtext 请求，按出现顺序。 */
   interceptedUrls: string[];
+  /** playerResponse 的来源，取不到字幕时用来定位问题。 */
+  from: string;
 }
 
-const state: PageState = { videoId: null, tracks: [], interceptedUrls: [] };
+const state: PageState = {
+  videoId: null,
+  tracks: [],
+  interceptedUrls: [],
+  from: '未收到',
+};
+
+/** 当前页面状态的只读快照，供诊断输出。 */
+export function pageSnapshot() {
+  return {
+    videoId: state.videoId,
+    playerResponseFrom: state.from,
+    trackCount: state.tracks.length,
+    trackLanguages: state.tracks.map(
+      (t) => `${t.languageCode}${t.kind === 'asr' ? '(自动)' : ''}`,
+    ),
+    interceptedCount: state.interceptedUrls.length,
+  };
+}
 
 /** 开始监听 MAIN world 的消息。在 content script 启动时调用一次。 */
 export function listenToMainWorld(): void {
@@ -36,6 +56,7 @@ export function listenToMainWorld(): void {
 
     if (msg.type === 'PLAYER_RESPONSE') {
       state.videoId = msg.videoId;
+      state.from = msg.from;
       if (msg.tracks.length > 0) state.tracks = msg.tracks;
     } else if (msg.type === 'TIMEDTEXT_URL') {
       if (!state.interceptedUrls.includes(msg.url)) {
@@ -50,6 +71,7 @@ export function resetPageState(): void {
   state.videoId = null;
   state.tracks = [];
   state.interceptedUrls = [];
+  state.from = '未收到';
   window.postMessage({ type: REQUEST_PLAYER_RESPONSE }, location.origin);
 }
 

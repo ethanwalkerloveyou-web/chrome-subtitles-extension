@@ -81,9 +81,60 @@ interface PlayerResponse {
   };
 }
 
-function readPlayerResponse(): PlayerResponse | null {
-  const w = window as unknown as { ytInitialPlayerResponse?: PlayerResponse };
-  return w.ytInitialPlayerResponse ?? null;
+/**
+ * 按可靠性依次尝试几个 playerResponse 的来源。
+ *
+ * `#movie_player.getPlayerResponse()` 排第一：它是播放器实例的当前状态，
+ * SPA 切视频后一定是新的。而 window.ytInitialPlayerResponse 是首屏 HTML
+ * 里那份，导航后不保证被更新 —— 只靠它会读到上一支视频的数据，或者读不到。
+ */
+function readPlayerResponse(): {
+  pr: PlayerResponse | null;
+  from: string;
+} {
+  const w = window as unknown as {
+    ytInitialPlayerResponse?: PlayerResponse;
+    ytplayer?: { config?: { args?: { player_response?: string } } };
+  };
+
+  const player = document.getElementById('movie_player') as unknown as {
+    getPlayerResponse?: () => PlayerResponse;
+  } | null;
+
+  try {
+    const pr = player?.getPlayerResponse?.();
+    if (pr?.captions) return { pr, from: 'movie_player.getPlayerResponse' };
+  } catch {
+    // 播放器还没初始化完，往下试
+  }
+
+  if (w.ytInitialPlayerResponse?.captions) {
+    return { pr: w.ytInitialPlayerResponse, from: 'ytInitialPlayerResponse' };
+  }
+
+  // 老版本播放器把 playerResponse 塞在这里，且是 JSON 字符串
+  const legacy = w.ytplayer?.config?.args?.player_response;
+  if (legacy) {
+    try {
+      return { pr: JSON.parse(legacy) as PlayerResponse, from: 'ytplayer.config' };
+    } catch {
+      // 解析失败就当没有
+    }
+  }
+
+  // 都没有 captions 字段时，退回任何一个能拿到的，至少 videoId 是有的
+  const fallback =
+    (() => {
+      try {
+        return player?.getPlayerResponse?.() ?? null;
+      } catch {
+        return null;
+      }
+    })() ??
+    w.ytInitialPlayerResponse ??
+    null;
+
+  return { pr: fallback, from: fallback ? 'fallback(无 captions 字段)' : '未找到' };
 }
 
 function extractTracks(pr: PlayerResponse | null): TrackCandidate[] {
@@ -100,12 +151,15 @@ function extractTracks(pr: PlayerResponse | null): TrackCandidate[] {
 }
 
 function publishPlayerResponse() {
-  const pr = readPlayerResponse();
+  const { pr, from } = readPlayerResponse();
   post({
     source: MAIN_WORLD_SOURCE,
     type: 'PLAYER_RESPONSE',
     videoId: pr?.videoDetails?.videoId ?? null,
     tracks: extractTracks(pr),
+    // 排查用：取不到字幕时要能分清是"没读到 playerResponse"
+    // 还是"读到了但这个视频确实没有字幕轨"
+    from,
   });
 }
 
@@ -117,7 +171,8 @@ function publishWithRetries() {
   let tries = 0;
   const timer = setInterval(() => {
     publishPlayerResponse();
-    if (++tries >= 8 || readPlayerResponse()) clearInterval(timer);
+    // 拿到带 captions 的响应才算就位；播放器初始化需要一点时间
+    if (++tries >= 12 || readPlayerResponse().pr?.captions) clearInterval(timer);
   }, 250);
 }
 

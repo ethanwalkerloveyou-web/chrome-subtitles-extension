@@ -16,6 +16,8 @@ export type MainWorldMessage =
       type: 'PLAYER_RESPONSE';
       videoId: string | null;
       tracks: TrackCandidate[];
+      /** playerResponse 是从哪个来源读到的，排查时用。 */
+      from: string;
     };
 
 /** content script 请求 MAIN world 重新读一次 playerResponse。 */

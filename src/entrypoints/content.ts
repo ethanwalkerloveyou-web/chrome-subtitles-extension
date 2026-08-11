@@ -1,5 +1,6 @@
 import {
   listenToMainWorld,
+  pageSnapshot,
   resetPageState,
   youtubeAdapter,
 } from '../adapters/youtube.ts';
@@ -13,11 +14,49 @@ const ADAPTERS: SiteAdapter[] = [youtubeAdapter];
 interface DebugHandle {
   track: SubtitleTrack | null;
   adapter: string | null;
+  /** 页面状态快照：读到了什么、有哪些字幕轨。排查时看这个。 */
+  snapshot: ReturnType<typeof pageSnapshot>;
   refetch: () => Promise<SubtitleTrack | null>;
 }
 
 function log(...args: unknown[]) {
   console.log('%c[双语字幕]', 'color:#6fb3e0;font-weight:bold', ...args);
+}
+
+/**
+ * 取不到字幕时打出足够定位问题的信息。
+ *
+ * 只说"没有可用字幕轨"是没用的 —— 分不清是这个视频本来就没字幕，
+ * 还是我们没读到 playerResponse（那才是需要改代码的情况）。
+ */
+function reportFailure() {
+  const snap = pageSnapshot();
+
+  let reason: string;
+  if (snap.playerResponseFrom === '未收到') {
+    reason = 'MAIN world 脚本没有回报 —— 注入可能失败了，这是 bug';
+  } else if (snap.playerResponseFrom === '未找到') {
+    reason = '页面上找不到 playerResponse —— 字段路径可能变了，这是 bug';
+  } else if (snap.trackCount === 0) {
+    reason = '这个视频本身没有任何字幕轨（音乐 MV 等常见）';
+  } else {
+    reason = `有 ${snap.trackCount} 条字幕轨但没有英文的`;
+  }
+
+  console.groupCollapsed(
+    '%c[双语字幕]%c ⚠ 没取到英文字幕 — ' + reason,
+    'color:#6fb3e0;font-weight:bold',
+    'color:inherit',
+  );
+  console.log('playerResponse 来源:', snap.playerResponseFrom);
+  console.log('字幕轨:', snap.trackCount, snap.trackLanguages);
+  console.log('截获的 timedtext 请求:', snap.interceptedCount);
+  console.log('videoId:', snap.videoId);
+  console.log(
+    '提示：先点播放器上的 CC 按钮确认这个视频到底有没有字幕。' +
+      '有字幕但这里显示 0 条，就是我们的 bug。',
+  );
+  console.groupEnd();
 }
 
 class Session {
@@ -45,7 +84,7 @@ class Session {
         track,
       );
     } else {
-      log('⚠ 这个视频没有可用的英文字幕轨');
+      reportFailure();
     }
     return track;
   }
@@ -128,6 +167,9 @@ export default defineContentScript({
       },
       get adapter() {
         return session.adapterId;
+      },
+      get snapshot() {
+        return pageSnapshot();
       },
       refetch: () => session.start(),
     };

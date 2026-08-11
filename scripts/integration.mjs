@@ -62,14 +62,21 @@ const ASR_JSON3 = {
 const TT = 'https://www.youtube.com/api/timedtext';
 
 /** 造一个 watch 页面。tracks 决定 playerResponse 里有哪些字幕轨。 */
-function mockPage({ videoId, tracks, playerFetches }) {
+function mockPage({ videoId, tracks, playerFetches, viaPlayerMethod }) {
   return `<!doctype html><html><head><title>${videoId} - YouTube</title></head><body>
 <div id="movie_player"><video></video></div>
 <script>
-  window.ytInitialPlayerResponse = {
+  const __pr = {
     videoDetails: { videoId: ${JSON.stringify(videoId)} },
     captions: { playerCaptionsTracklistRenderer: { captionTracks: ${JSON.stringify(tracks)} } }
   };
+  ${
+    viaPlayerMethod
+      ? // 真实 YouTube 上 playerResponse 挂在播放器实例上，SPA 导航后才是新的；
+        // 这一支刻意不设全局变量，验证优先读播放器方法这条路
+        `document.getElementById('movie_player').getPlayerResponse = () => __pr;`
+      : `window.ytInitialPlayerResponse = __pr;`
+  }
   // 模拟 YouTube 的 SPA 导航：换 URL、换 playerResponse、派发导航事件
   window.__navigate = (newId) => {
     history.pushState({}, '', '/watch?v=' + newId);
@@ -141,6 +148,17 @@ const CASES = [
     playerFetches: `${TT}?v=PRIOR001&lang=en&kind=asr`,
     expect: (d) => {
       assertEq(d.kind, 'manual', '应该选人工字幕而不是截获到的自动字幕');
+    },
+  },
+  {
+    name: '优先读 movie_player.getPlayerResponse()',
+    videoId: 'PLAYER01',
+    viaPlayerMethod: true,
+    tracks: [{ baseUrl: `${TT}?v=PLAYER01&lang=en`, languageCode: 'en' }],
+    expect: (d) => {
+      assert(d.found, '应该通过播放器方法拿到字幕');
+      assertEq(d.kind, 'manual', 'kind');
+      assertEq(d.videoId, 'PLAYER01', 'videoId');
     },
   },
   {
