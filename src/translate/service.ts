@@ -36,6 +36,7 @@ function keyFor(track: SubtitleTrack, settings: Settings): string {
     promptVersion: PROMPT_VERSION,
     // 自定义提示词也算提示词变化，改了就不复用旧译文
     promptHash: hashString(settings.translation.systemPrompt.trim()),
+    lineLength: settings.translation.lineLength,
   });
 }
 

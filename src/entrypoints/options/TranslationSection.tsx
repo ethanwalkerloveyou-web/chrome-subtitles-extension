@@ -1,4 +1,9 @@
-import type { TargetLang, TranslationSettings } from '../../store/settings.ts';
+import {
+  LINE_LENGTH_PRESETS,
+  type LineLength,
+  type TargetLang,
+  type TranslationSettings,
+} from '../../store/settings.ts';
 import { DEFAULT_SYSTEM_PROMPT } from '../../translate/prompt.ts';
 import { Field, Section, Select, TextArea, TextInput } from './controls.tsx';
 
@@ -6,6 +11,10 @@ const LANGS: { value: TargetLang; label: string }[] = [
   { value: 'zh-CN', label: '简体中文' },
   { value: 'zh-TW', label: '繁體中文' },
 ];
+
+const LINE_LENGTHS = (Object.keys(LINE_LENGTH_PRESETS) as LineLength[]).map(
+  (value) => ({ value, label: LINE_LENGTH_PRESETS[value].label }),
+);
 
 /**
  * 术语表在 UI 上是一个每行 `English = 中文` 的文本框。
@@ -48,6 +57,17 @@ export default function TranslationSection({
           value={translation.targetLang}
           onChange={(targetLang) => patch({ targetLang })}
           options={LANGS}
+        />
+      </Field>
+
+      <Field
+        label="每条字幕长度"
+        hint="每条字幕最多放多少内容。觉得一条太长、铺满屏幕就调「短」；长句会自动拆成多条依次显示。改这个会重新翻译当前视频"
+      >
+        <Select
+          value={translation.lineLength}
+          onChange={(lineLength) => patch({ lineLength })}
+          options={LINE_LENGTHS}
         />
       </Field>
 

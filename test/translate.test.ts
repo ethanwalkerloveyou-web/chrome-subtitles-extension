@@ -481,6 +481,12 @@ describe('buildSystemPrompt', () => {
     assert.equal(buildSystemPrompt(req({ systemPrompt: '   ' })), buildSystemPrompt(req()));
   });
 
+  it('自动字幕断句长度跟随 maxChars / maxWords', () => {
+    const p = buildSystemPrompt(req({ kind: 'asr', maxWords: 8, maxChars: 15 }));
+    assert.ok(p.includes('8 个英文词'), '英文词数上限应写进提示词');
+    assert.ok(p.includes('15 个字'), '译文字数上限应写进提示词');
+  });
+
   it('默认模板导出的常量本身带占位符', () => {
     assert.ok(DEFAULT_SYSTEM_PROMPT.includes('{lang}'));
   });

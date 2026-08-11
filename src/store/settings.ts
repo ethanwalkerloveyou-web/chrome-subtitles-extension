@@ -5,6 +5,8 @@
  * 配置体积很小（几 KB），整体读写换来的是「不会出现半新半旧的状态」。
  */
 
+import { DEFAULT_MANUAL_CAPS, type ManualCaps } from '../subtitle/normalize.ts';
+
 // ---------------------------------------------------------------- 大模型
 
 export type ProviderId = 'anthropic' | 'openai-compatible';
@@ -50,6 +52,42 @@ export interface GlossaryEntry {
   zh: string;
 }
 
+/** 每条字幕的长度档位：把长句拆得更碎 / 更整。 */
+export type LineLength = 'short' | 'medium' | 'long';
+
+/**
+ * 每档对应的具体参数。
+ *  - manual：人工字幕合并的字符/时间上限（越小每条越短）
+ *  - asrMaxChars / asrMaxWords：自动字幕让模型断句时，每条译文/英文的目标长度
+ */
+export const LINE_LENGTH_PRESETS: Record<
+  LineLength,
+  { label: string; manual: ManualCaps; asrMaxChars: number; asrMaxWords: number }
+> = {
+  short: {
+    label: '短 — 每条更短，切换更勤',
+    manual: { softChars: 55, hardChars: 90, softSpanMs: 3500, hardSpanMs: 6000 },
+    asrMaxChars: 15,
+    asrMaxWords: 8,
+  },
+  medium: {
+    label: '适中（推荐）',
+    manual: DEFAULT_MANUAL_CAPS,
+    asrMaxChars: 25,
+    asrMaxWords: 13,
+  },
+  long: {
+    label: '长 — 每条更完整，切换更少',
+    manual: { softChars: 180, hardChars: 300, softSpanMs: 10000, hardSpanMs: 16000 },
+    asrMaxChars: 40,
+    asrMaxWords: 20,
+  },
+};
+
+export function resolveLineLength(l: LineLength) {
+  return LINE_LENGTH_PRESETS[l] ?? LINE_LENGTH_PRESETS.medium;
+}
+
 export interface TranslationSettings {
   targetLang: TargetLang;
   /** 领域提示，拼进系统提示词，例如「机器学习技术分享」。 */
@@ -60,6 +98,8 @@ export interface TranslationSettings {
    * 想翻成中文以外的语言，改这里最直接。输出格式等硬约束由程序固定追加。
    */
   systemPrompt: string;
+  /** 每条字幕的长度档位。控制人工字幕合并粒度与自动字幕断句长度。 */
+  lineLength: LineLength;
 }
 
 // ---------------------------------------------------------------- 字幕
@@ -220,6 +260,7 @@ export const DEFAULT_SETTINGS: Settings = {
     domain: '',
     glossary: [],
     systemPrompt: '',
+    lineLength: 'medium',
   },
   subtitle: {
     enabled: true,

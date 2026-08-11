@@ -6,6 +6,7 @@ import { mergeRenderLines, SubtitleSync } from '../render/sync.ts';
 import { recordTrack } from '../store/diagnostics.ts';
 import {
   loadSettings,
+  resolveLineLength,
   watchSettings,
   type Settings,
 } from '../store/settings.ts';
@@ -178,11 +179,13 @@ class Session {
    * 截获路径还要等播放器真的去请求字幕。所以退避重试几次。
    */
   private async retryFetch(signal: AbortSignal): Promise<SubtitleTrack | null> {
+    // 「每条字幕长度」设置控制人工字幕的合并粒度
+    const manualCaps = resolveLineLength(this.settings.translation.lineLength).manual;
     for (const delay of [0, 400, 800, 1500, 2500]) {
       if (signal.aborted) return null;
       if (delay > 0) await sleep(delay, signal);
       try {
-        const track = await this.adapter!.fetchSubtitles(signal);
+        const track = await this.adapter!.fetchSubtitles(signal, { manualCaps });
         if (track) return track;
       } catch (err) {
         if (signal.aborted) return null;

@@ -156,7 +156,7 @@ export const xAdapter: SiteAdapter = {
     state.playlists = [];
   },
 
-  async fetchSubtitles(signal) {
+  async fetchSubtitles(signal, opts) {
     const videoId = this.videoId();
     if (!videoId) return null;
 
@@ -170,7 +170,7 @@ export const xAdapter: SiteAdapter = {
           trackId: found.language,
           languageCode: found.language,
           kind: 'manual',
-          lines: mergeManualCues(found.cues),
+          lines: mergeManualCues(found.cues, opts?.manualCaps),
           source: 'intercepted',
         } satisfies SubtitleTrack;
       } catch {
@@ -185,7 +185,7 @@ export const xAdapter: SiteAdapter = {
         trackId: 'en',
         languageCode: 'en',
         kind: 'manual',
-        lines: mergeManualCues(native),
+        lines: mergeManualCues(native, opts?.manualCaps),
         source: 'text-tracks',
       } satisfies SubtitleTrack;
     }

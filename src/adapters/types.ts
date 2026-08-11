@@ -5,7 +5,13 @@
  * 所以加一个新网站等于加一个这个接口的实现。
  */
 
+import type { ManualCaps } from '../subtitle/normalize.ts';
 import type { SubtitleTrack } from '../subtitle/types.ts';
+
+/** 取字幕时的可选项，目前只有人工字幕的合并上限（受「每条字幕长度」设置控制）。 */
+export interface FetchOptions {
+  manualCaps?: ManualCaps;
+}
 
 export interface SiteAdapter {
   readonly id: string;
@@ -28,7 +34,10 @@ export interface SiteAdapter {
   overlayContainer(): HTMLElement | null;
 
   /** 取英文字幕轨。没有可用字幕时返回 null。 */
-  fetchSubtitles(signal?: AbortSignal): Promise<SubtitleTrack | null>;
+  fetchSubtitles(
+    signal?: AbortSignal,
+    opts?: FetchOptions,
+  ): Promise<SubtitleTrack | null>;
 
   /** 关掉站点自带的字幕，避免和我们的覆盖层重叠。 */
   hideNativeSubtitles(): void;

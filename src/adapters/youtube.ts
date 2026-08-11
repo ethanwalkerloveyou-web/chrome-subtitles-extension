@@ -9,13 +9,17 @@ import {
   toJson3Url,
   type Json3Doc,
 } from '../subtitle/timedtext.ts';
-import { chunkAsrTokens, mergeManualCues } from '../subtitle/normalize.ts';
+import {
+  chunkAsrTokens,
+  mergeManualCues,
+  type ManualCaps,
+} from '../subtitle/normalize.ts';
 import type {
   SubtitleTrack,
   TrackCandidate,
   TrackKind,
 } from '../subtitle/types.ts';
-import type { SiteAdapter } from './types.ts';
+import type { FetchOptions, SiteAdapter } from './types.ts';
 import { noteInterceptedUrl } from './x.ts';
 
 /** MAIN world 报上来的信息，随导航更新。 */
@@ -100,6 +104,7 @@ function buildTrack(
     kind: TrackKind;
     source: SubtitleTrack['source'];
   },
+  manualCaps?: ManualCaps,
 ): SubtitleTrack | null {
   if (meta.kind === 'asr') {
     const tokens = parseAsrTokens(doc);
@@ -122,7 +127,7 @@ function buildTrack(
     trackId: meta.languageCode,
     languageCode: meta.languageCode,
     kind: 'manual',
-    lines: mergeManualCues(cues),
+    lines: mergeManualCues(cues, manualCaps),
     source: meta.source,
   };
 }
@@ -184,7 +189,7 @@ export const youtubeAdapter: SiteAdapter = {
 
   reset: resetPageState,
 
-  async fetchSubtitles(signal) {
+  async fetchSubtitles(signal, opts) {
     const videoId = this.videoId();
     if (!videoId) return null;
 
@@ -194,12 +199,16 @@ export const youtubeAdapter: SiteAdapter = {
     for (const c of rankCandidates(state)) {
       try {
         const doc = await fetchJson3(toJson3Url(c.url), signal);
-        const track = buildTrack(doc, {
-          videoId,
-          languageCode: c.languageCode,
-          kind: c.kind,
-          source: c.source,
-        });
+        const track = buildTrack(
+          doc,
+          {
+            videoId,
+            languageCode: c.languageCode,
+            kind: c.kind,
+            source: c.source,
+          },
+          opts?.manualCaps,
+        );
         if (track) return track;
       } catch {
         // 换下一个候选，不中断整条链

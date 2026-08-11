@@ -32,6 +32,9 @@ export interface BatchRequest {
   glossary: { en: string; zh: string }[];
   /** 用户在设置页自定义的系统提示词模板；留空用默认。 */
   systemPrompt?: string;
+  /** 自动字幕断句时，每条译文/英文的目标长度（受「每条字幕长度」设置控制）。 */
+  maxChars?: number;
+  maxWords?: number;
 }
 
 export interface TranslationProvider {

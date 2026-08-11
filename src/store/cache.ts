@@ -38,6 +38,8 @@ export function cacheKey(parts: {
   promptVersion: number;
   /** 自定义提示词内容的短哈希；用默认模板时为空。 */
   promptHash?: string;
+  /** 每条字幕长度档位；改了会改变断句/合并粒度，旧结果不能复用。 */
+  lineLength?: string;
 }): string {
   return [
     parts.videoId,
@@ -46,6 +48,7 @@ export function cacheKey(parts: {
     parts.model,
     `p${parts.promptVersion}`,
     `h${parts.promptHash ?? ''}`,
+    `l${parts.lineLength ?? ''}`,
   ].join('|');
 }
 

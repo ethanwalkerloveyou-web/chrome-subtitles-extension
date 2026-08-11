@@ -33,12 +33,24 @@ const SENTENCE_END = /[.!?。！？…]["')\]]?$/;
 /** 从句边界（逗号分号等），软上限命中后在这里断，比硬切在词中间强。 */
 const CLAUSE_END = /[,;:，；：]["')\]]?$/;
 
-// 单条字幕的显示上限。即兴口语的句号可以隔十几秒才出现一次，
-// 只按句号切会垒出一堵 30 秒的文字墙，一次糊满整个播放器。
-const SOFT_SPAN_MS = 7_000;
-const HARD_SPAN_MS = 12_000;
-const SOFT_CHARS = 120;
-const HARD_CHARS = 200;
+/**
+ * 单条人工字幕的显示上限。即兴口语的句号可以隔十几秒才出现一次，
+ * 只按句号切会垒出一堵文字墙。这几个值可由「每条字幕长度」设置调节。
+ */
+export interface ManualCaps {
+  softChars: number;
+  hardChars: number;
+  softSpanMs: number;
+  hardSpanMs: number;
+}
+
+/** 默认上限（对应「适中」档），不传 caps 时用它，保持老行为不变。 */
+export const DEFAULT_MANUAL_CAPS: ManualCaps = {
+  softChars: 120,
+  hardChars: 200,
+  softSpanMs: 7_000,
+  hardSpanMs: 12_000,
+};
 
 /**
  * 人工字幕：把半句的 cue 合并成适合显示的行。
@@ -47,8 +59,12 @@ const HARD_CHARS = 200;
  * 逐条翻译会丢主语、代词错乱，所以要合并。但合并必须有显示上限：
  * 句尾标点优先；软上限后遇到从句边界（逗号）就切；硬上限直接切 ——
  * 即兴口语的句号可能十几秒不出现，只等句号会合出一屏糊脸的大块。
+ * caps 控制上限，让用户能把每条调短或调长。
  */
-export function mergeManualCues(cues: Token[]): SourceLine[] {
+export function mergeManualCues(
+  cues: Token[],
+  caps: ManualCaps = DEFAULT_MANUAL_CAPS,
+): SourceLine[] {
   const lines: SourceLine[] = [];
   let buf: Token[] = [];
   let chars = 0;
@@ -82,8 +98,8 @@ export function mergeManualCues(cues: Token[]): SourceLine[] {
     chars += cue.text.length + 1;
     const spanMs = cue.endMs - buf[0]!.startMs;
 
-    const soft = spanMs >= SOFT_SPAN_MS || chars >= SOFT_CHARS;
-    const hard = spanMs >= HARD_SPAN_MS || chars >= HARD_CHARS;
+    const soft = spanMs >= caps.softSpanMs || chars >= caps.softChars;
+    const hard = spanMs >= caps.hardSpanMs || chars >= caps.hardChars;
 
     if (
       SENTENCE_END.test(cue.text) ||

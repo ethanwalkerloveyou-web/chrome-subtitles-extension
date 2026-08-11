@@ -74,13 +74,15 @@ export function buildSystemPrompt(req: BatchRequest): string {
     .replace(/\{lang\}/g, lang)
     .replace(/\{domain\}/g, domainLine);
 
+  const maxWords = req.maxWords ?? 13;
+  const maxChars = req.maxChars ?? 25;
   const asrExtra =
     req.kind === 'asr'
       ? `
 这段文字来自自动语音识别，没有标点、没有大小写、断句随意。你要同时完成三件事：
-1. 按语义重新断句成适合字幕显示的短句（每句大约 8~15 个英文词），
-   加上正确的标点和大小写，写进 en 字段；长句拆成多条
-2. 把每句译成${lang}，写进 zh 字段，每条不超过 25 个字
+1. 按语义重新断句成适合字幕显示的短句（每句大约 ${Math.max(4, maxWords - 4)}~${maxWords} 个英文词），
+   加上正确的标点和大小写，写进 en 字段；长句务必拆成多条，别贪长
+2. 把每句译成${lang}，写进 zh 字段，每条尽量不超过 ${maxChars} 个字
 3. en 字段必须只用原文里出现过的词，顺序不变 —— 不要增删词，否则时间轴会对不上
 每条的 id 从 0 开始递增。`
       : `

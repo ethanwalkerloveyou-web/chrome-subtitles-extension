@@ -188,6 +188,24 @@ describe('mergeManualCues', () => {
     assert.equal(out[1]!.startMs, 8000);
   });
 
+  it('caps 调小时每条更短、切得更多', () => {
+    // 6 条没有标点的 cue，默认上限下会并成一条；给更小的上限应切成多条
+    const cues = Array.from({ length: 6 }, (_, i) => ({
+      text: 'some words here and there',
+      startMs: i * 2000,
+      endMs: i * 2000 + 1800,
+    }));
+    const dflt = mergeManualCues(cues);
+    const shorter = mergeManualCues(cues, {
+      softChars: 40,
+      hardChars: 60,
+      softSpanMs: 3000,
+      hardSpanMs: 5000,
+    });
+    assert.equal(dflt.length, 1);
+    assert.ok(shorter.length > dflt.length, '更小的上限应切出更多条');
+  });
+
   it('软上限之后优先在逗号处断句', () => {
     const cues = [
       { text: 'first part of a very long sentence', startMs: 0, endMs: 4000 },

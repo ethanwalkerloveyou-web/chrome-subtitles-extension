@@ -7,7 +7,7 @@
 
 import { alignSentencesToTokens } from '../subtitle/normalize.ts';
 import type { SourceLine, SubtitleTrack } from '../subtitle/types.ts';
-import type { Settings } from '../store/settings.ts';
+import { resolveLineLength, type Settings } from '../store/settings.ts';
 import type {
   BatchRequest,
   ModelLine,
@@ -83,6 +83,8 @@ function buildRequest(
     .join(' ')
     .slice(-CONTEXT_CHARS);
 
+  const length = resolveLineLength(settings.translation.lineLength);
+
   return {
     lines: batch.lines,
     kind: track.kind,
@@ -91,6 +93,8 @@ function buildRequest(
     domain: settings.translation.domain,
     glossary: settings.translation.glossary,
     systemPrompt: settings.translation.systemPrompt,
+    maxChars: length.asrMaxChars,
+    maxWords: length.asrMaxWords,
   };
 }
 
