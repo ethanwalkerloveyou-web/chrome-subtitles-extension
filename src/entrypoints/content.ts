@@ -1,26 +1,56 @@
-import {
-  listenToMainWorld,
-  pageSnapshot,
-  resetPageState,
-  youtubeAdapter,
-} from '../adapters/youtube.ts';
+import { siteAdapters } from '../adapters/index.ts';
 import type { SiteAdapter } from '../adapters/types.ts';
-import type { SubtitleTrack } from '../subtitle/types.ts';
+import { listenToMainWorld, pageSnapshot } from '../adapters/youtube.ts';
+import { SubtitleOverlay } from '../render/overlay.ts';
+import { SubtitleSync } from '../render/sync.ts';
 import { recordTrack } from '../store/diagnostics.ts';
+import {
+  loadSettings,
+  watchSettings,
+  type Settings,
+} from '../store/settings.ts';
+import type { SubtitleTrack } from '../subtitle/types.ts';
+import { DEBUG_STATE } from '../subtitle/main-world-protocol.ts';
+import {
+  TRANSLATE_PORT,
+  type FromWorker,
+  type ToWorker,
+} from '../translate/service.ts';
+import type { RenderLine } from '../translate/types.ts';
 
-const ADAPTERS: SiteAdapter[] = [youtubeAdapter];
-
-/** 拿到字幕后暴露给 devtools，方便排查：window.__ytBilingual */
+/** 排查用的把手，挂在 window.__ytBilingual 上。 */
 interface DebugHandle {
   track: SubtitleTrack | null;
+  lines: RenderLine[];
   adapter: string | null;
-  /** 页面状态快照：读到了什么、有哪些字幕轨。排查时看这个。 */
   snapshot: ReturnType<typeof pageSnapshot>;
-  refetch: () => Promise<SubtitleTrack | null>;
+  refetch: () => Promise<void>;
 }
 
 function log(...args: unknown[]) {
   console.log('%c[双语字幕]', 'color:#6fb3e0;font-weight:bold', ...args);
+}
+
+/**
+ * 把调试状态推到页面世界。
+ *
+ * content script 挂在自己 window 上的属性，devtools 的默认 Console
+ * 上下文（页面世界）是看不到的 —— 排查时得先切上下文，很不直观。
+ * 推过去之后 __ytBilingual 就是直接可用的。
+ */
+function publishDebugState(session: Session) {
+  window.postMessage(
+    {
+      type: DEBUG_STATE,
+      state: {
+        adapter: session.adapterId,
+        track: session.track,
+        lines: session.lines,
+        snapshot: pageSnapshot(),
+      },
+    },
+    location.origin,
+  );
 }
 
 /**
@@ -29,19 +59,21 @@ function log(...args: unknown[]) {
  * 只说"没有可用字幕轨"是没用的 —— 分不清是这个视频本来就没字幕，
  * 还是我们没读到 playerResponse（那才是需要改代码的情况）。
  */
-function reportFailure() {
+function reportFailure(adapterId: string) {
+  if (adapterId !== 'youtube') {
+    log('⚠ 这个视频没有可用的英文字幕轨');
+    return;
+  }
   const snap = pageSnapshot();
 
-  let reason: string;
-  if (snap.playerResponseFrom === '未收到') {
-    reason = 'MAIN world 脚本没有回报 —— 注入可能失败了，这是 bug';
-  } else if (snap.playerResponseFrom === '未找到') {
-    reason = '页面上找不到 playerResponse —— 字段路径可能变了，这是 bug';
-  } else if (snap.trackCount === 0) {
-    reason = '这个视频本身没有任何字幕轨（音乐 MV 等常见）';
-  } else {
-    reason = `有 ${snap.trackCount} 条字幕轨但没有英文的`;
-  }
+  const reason =
+    snap.playerResponseFrom === '未收到'
+      ? 'MAIN world 脚本没有回报 —— 注入可能失败了，这是 bug'
+      : snap.playerResponseFrom === '未找到'
+        ? '页面上找不到 playerResponse —— 字段路径可能变了，这是 bug'
+        : snap.trackCount === 0
+          ? '这个视频本身没有任何字幕轨（音乐 MV 等常见）'
+          : `有 ${snap.trackCount} 条字幕轨但没有英文的`;
 
   console.groupCollapsed(
     '%c[双语字幕]%c ⚠ 没取到英文字幕 — ' + reason,
@@ -51,7 +83,6 @@ function reportFailure() {
   console.log('playerResponse 来源:', snap.playerResponseFrom);
   console.log('字幕轨:', snap.trackCount, snap.trackLanguages);
   console.log('截获的 timedtext 请求:', snap.interceptedCount);
-  console.log('videoId:', snap.videoId);
   console.log(
     '提示：先点播放器上的 CC 按钮确认这个视频到底有没有字幕。' +
       '有字幕但这里显示 0 条，就是我们的 bug。',
@@ -59,43 +90,71 @@ function reportFailure() {
   console.groupEnd();
 }
 
+/** 一支视频的完整生命周期：取字幕 → 翻译 → 渲染。 */
 class Session {
   private adapter: SiteAdapter | null = null;
   private abort: AbortController | null = null;
+  private port: chrome.runtime.Port | null = null;
+  private overlay: SubtitleOverlay | null = null;
+  private sync: SubtitleSync | null = null;
+  private remountTimer = 0;
+
   track: SubtitleTrack | null = null;
+  lines: RenderLine[] = [];
 
-  async start(): Promise<SubtitleTrack | null> {
+  private settings: Settings;
+
+  constructor(settings: Settings) {
+    this.settings = settings;
+  }
+
+  get adapterId() {
+    return this.adapter?.id ?? null;
+  }
+
+  updateSettings(settings: Settings): void {
+    this.settings = settings;
+    this.overlay?.updateSettings(settings.subtitle);
+  }
+
+  async start(): Promise<void> {
     this.stop();
-    this.adapter = ADAPTERS.find((a) => a.matches(location.href)) ?? null;
-    if (!this.adapter) return null;
+    this.adapter = siteAdapters.find((a) => a.matches(location.href)) ?? null;
+    if (!this.adapter) return;
+    if (!this.settings.subtitle.enabled) return;
 
-    resetPageState();
     this.abort = new AbortController();
+    const signal = this.abort.signal;
+    this.adapter.reset?.();
 
-    // 播放器要一点时间把 ytInitialPlayerResponse 换成新视频的
-    const track = await this.retryFetch(this.abort.signal);
+    const track = await this.retryFetch(signal);
+    if (signal.aborted) return;
+
     this.track = track;
     await recordTrack(this.adapter.videoId(), track);
 
-    if (track) {
-      log(
-        `✓ ${track.kind === 'asr' ? '自动字幕' : '人工字幕'}` +
-          ` · ${track.lines.length} 段 · 来源 ${track.source}`,
-        track,
-      );
-    } else {
-      reportFailure();
+    if (!track) {
+      reportFailure(this.adapter.id);
+      publishDebugState(this);
+      return;
     }
-    return track;
+
+    log(
+      `✓ ${track.kind === 'asr' ? '自动字幕' : '人工字幕'}` +
+        ` · ${track.lines.length} 段 · 来源 ${track.source}`,
+    );
+
+    this.mountOverlay();
+    this.startTranslation(track);
+    publishDebugState(this);
   }
 
   /**
-   * 字幕轨不是立刻就绪的：SPA 导航后 ytInitialPlayerResponse 要等一会儿，
+   * 字幕轨不是立刻就绪的：SPA 导航后 playerResponse 要等一会儿，
    * 截获路径还要等播放器真的去请求字幕。所以退避重试几次。
    */
   private async retryFetch(signal: AbortSignal): Promise<SubtitleTrack | null> {
-    const delays = [0, 400, 800, 1500, 2500];
-    for (const delay of delays) {
+    for (const delay of [0, 400, 800, 1500, 2500]) {
       if (signal.aborted) return null;
       if (delay > 0) await sleep(delay, signal);
       try {
@@ -109,61 +168,152 @@ class Session {
     return null;
   }
 
-  stop() {
-    this.abort?.abort();
-    this.abort = null;
-    this.track = null;
+  /**
+   * 挂载覆盖层，并持续盯着它是否还在。
+   *
+   * 切换剧场模式 / 全屏时播放器 DOM 会被重建，覆盖层会被连带移除。
+   * 定时检查一次比监听一堆不保证存在的事件稳。
+   */
+  private mountOverlay(): void {
+    const adapter = this.adapter!;
+    const video = adapter.findVideo();
+    const container = adapter.overlayContainer();
+    if (!video || !container) {
+      log('⚠ 找不到播放器容器，无法显示字幕');
+      return;
+    }
+
+    adapter.hideNativeSubtitles();
+
+    this.overlay = new SubtitleOverlay(this.settings.subtitle, {
+      onWordClick: (word) => log('生词:', word),
+    });
+    this.overlay.mount(container);
+
+    this.sync = new SubtitleSync(video, (line) => this.overlay?.show(line));
+    this.sync.start();
+
+    this.remountTimer = window.setInterval(() => {
+      if (this.overlay?.mounted) return;
+      const c = adapter.overlayContainer();
+      if (c) this.overlay?.mount(c);
+    }, 1000);
   }
 
-  get adapterId() {
-    return this.adapter?.id ?? null;
+  private startTranslation(track: SubtitleTrack): void {
+    const port = chrome.runtime.connect({ name: TRANSLATE_PORT });
+    this.port = port;
+    const post = (msg: ToWorker) => port.postMessage(msg);
+
+    port.onMessage.addListener((msg: FromWorker) => {
+      if (msg.type === 'LINES') {
+        this.lines = msg.replace
+          ? msg.lines
+          : [...this.lines, ...msg.lines].sort((a, b) => a.startMs - b.startMs);
+        this.sync?.setLines(this.lines);
+        publishDebugState(this);
+      } else if (msg.type === 'PROGRESS') {
+        const { done, total, status } = msg.progress;
+        this.overlay?.setStatus(
+          status === 'complete' ? null : `翻译中 ${done}/${total}`,
+        );
+        if (status === 'complete') log(`✓ 翻译完成 · ${this.lines.length} 行`);
+      } else if (msg.type === 'ERROR') {
+        this.overlay?.setStatus(`✕ ${msg.message}`);
+        log('翻译失败:', msg.message);
+      }
+    });
+
+    post({ type: 'START', track, settings: this.settings });
+
+    // 把播放位置报给 SW，让它优先翻正在播的那一段
+    const timer = window.setInterval(() => {
+      if (this.sync) post({ type: 'TIME', ms: this.sync.currentTimeMs });
+    }, 1000);
+    port.onDisconnect.addListener(() => clearInterval(timer));
+  }
+
+  stop(): void {
+    this.abort?.abort();
+    this.abort = null;
+    this.port?.disconnect();
+    this.port = null;
+    this.sync?.stop();
+    this.sync = null;
+    this.overlay?.destroy();
+    this.overlay = null;
+    if (this.remountTimer) clearInterval(this.remountTimer);
+    this.remountTimer = 0;
+    this.track = null;
+    this.lines = [];
   }
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const t = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => {
-      clearTimeout(t);
-      resolve();
-    }, { once: true });
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(t);
+        resolve();
+      },
+      { once: true },
+    );
   });
 }
 
 /**
- * YouTube 是 SPA，切视频不重新加载页面。
+ * 站点是 SPA，切视频不重新加载页面。
  * yt-navigate-finish 是 YouTube 自己派发的；再用 URL 轮询兜底，
  * 因为这个事件名不是公开 API，哪天改了不至于整个失效。
  */
 function watchNavigation(onChange: () => void) {
   let lastUrl = location.href;
-
   const check = () => {
     if (location.href === lastUrl) return;
     lastUrl = location.href;
     onChange();
   };
-
   window.addEventListener('yt-navigate-finish', check);
   setInterval(check, 700);
 }
 
 export default defineContentScript({
-  matches: ['https://www.youtube.com/*'],
+  matches: [
+    'https://www.youtube.com/*',
+    'https://x.com/*',
+    'https://twitter.com/*',
+  ],
   runAt: 'document_start',
 
   async main() {
+    const settings = await loadSettings();
     listenToMainWorld();
 
-    // 注入 MAIN world 脚本。必须在页面自己的环境里跑，
-    // 否则读不到 ytInitialPlayerResponse，也 hook 不了页面的 fetch。
+    // MAIN world 脚本负责读 playerResponse 和 hook fetch，
+    // content script 在 isolated world 里两件事都做不了
     await injectScript('/main-world.js', { keepInDom: true });
 
-    const session = new Session();
+    const session = new Session(settings);
+    let enabled = settings.subtitle.enabled;
 
+    watchSettings((next) => {
+      session.updateSettings(next);
+      // 总开关翻转时要整体重来（关掉要拆覆盖层，打开要重新取字幕）
+      if (next.subtitle.enabled !== enabled) {
+        enabled = next.subtitle.enabled;
+        void session.start();
+      }
+    });
+
+    // isolated world 里也留一份，带 refetch()（跨世界传不了函数）
     const debug: DebugHandle = {
       get track() {
         return session.track;
+      },
+      get lines() {
+        return session.lines;
       },
       get adapter() {
         return session.adapterId;
@@ -176,8 +326,6 @@ export default defineContentScript({
     Object.defineProperty(window, '__ytBilingual', { value: debug });
 
     await session.start();
-    watchNavigation(() => {
-      void session.start();
-    });
+    watchNavigation(() => void session.start());
   },
 });

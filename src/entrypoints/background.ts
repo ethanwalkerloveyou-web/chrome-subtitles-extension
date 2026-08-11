@@ -1,6 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Request, TestConnectionResult } from '../messaging.ts';
 import { activeCredentials, type LlmSettings } from '../store/settings.ts';
+import {
+  handleTranslatePort,
+  TRANSLATE_PORT,
+} from '../translate/service.ts';
 
 /**
  * 用一次极短的真实请求验证「Key 有效 + 模型可用 + 网络可达」。
@@ -147,5 +151,10 @@ export default defineBackground(() => {
     handle(req).then(sendResponse);
     // 返回 true 表示会异步回复，Chrome 会保持消息通道打开
     return true;
+  });
+
+  // 翻译走长连接：既能持续回传增量结果，也顺带让 SW 不被空闲回收
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === TRANSLATE_PORT) handleTranslatePort(port);
   });
 });

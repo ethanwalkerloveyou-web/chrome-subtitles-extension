@@ -14,8 +14,10 @@
 
 import type { TrackCandidate } from '../subtitle/types.ts';
 import {
+  DEBUG_STATE,
   MAIN_WORLD_SOURCE,
   REQUEST_PLAYER_RESPONSE,
+  type DebugState,
   type MainWorldMessage,
 } from '../subtitle/main-world-protocol.ts';
 
@@ -23,8 +25,9 @@ function post(msg: MainWorldMessage) {
   window.postMessage(msg, location.origin);
 }
 
-function isTimedText(url: string): boolean {
-  return url.includes('/api/timedtext');
+/** 我们关心的字幕相关请求：YouTube 的 timedtext，以及 X 的 HLS 清单。 */
+function isInteresting(url: string): boolean {
+  return url.includes('/api/timedtext') || /\.m3u8(\?|$)/.test(url);
 }
 
 /**
@@ -43,7 +46,7 @@ function interceptTimedText() {
           : input instanceof URL
             ? input.toString()
             : input.url;
-      if (isTimedText(url)) post({ source: MAIN_WORLD_SOURCE, type: 'TIMEDTEXT_URL', url });
+      if (isInteresting(url)) post({ source: MAIN_WORLD_SOURCE, type: 'TIMEDTEXT_URL', url });
     } catch {
       // 绝不能因为我们的探针让页面的 fetch 挂掉
     }
@@ -58,7 +61,7 @@ function interceptTimedText() {
   ) {
     try {
       const s = typeof url === 'string' ? url : url.toString();
-      if (isTimedText(s)) post({ source: MAIN_WORLD_SOURCE, type: 'TIMEDTEXT_URL', url: s });
+      if (isInteresting(s)) post({ source: MAIN_WORLD_SOURCE, type: 'TIMEDTEXT_URL', url: s });
     } catch {
       /* 同上 */
     }
@@ -180,10 +183,18 @@ export default defineUnlistedScript(() => {
   interceptTimedText();
   publishPlayerResponse();
 
-  // content script 在导航后要求重新读一次
   window.addEventListener('message', (e) => {
     if (e.source !== window || e.origin !== location.origin) return;
+
+    // content script 在导航后要求重新读一次
     if (e.data?.type === REQUEST_PLAYER_RESPONSE) publishWithRetries();
+
+    // 把调试快照挂到页面世界的 window 上，这样在 devtools 的默认
+    // Console 上下文里直接敲 __ytBilingual 就能看到
+    if (e.data?.type === DEBUG_STATE) {
+      (window as unknown as { __ytBilingual?: DebugState }).__ytBilingual =
+        e.data.state as DebugState;
+    }
   });
 
   // YouTube 自己派发的导航完成事件

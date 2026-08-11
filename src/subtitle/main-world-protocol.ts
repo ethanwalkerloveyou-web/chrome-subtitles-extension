@@ -22,3 +22,19 @@ export type MainWorldMessage =
 
 /** content script 请求 MAIN world 重新读一次 playerResponse。 */
 export const REQUEST_PLAYER_RESPONSE = 'REQUEST_PLAYER_RESPONSE';
+
+/**
+ * content script 往页面世界推的调试快照。
+ *
+ * content script 跑在 isolated world，它挂在 window 上的东西在 devtools
+ * 的默认 Console 上下文里是看不到的 —— 排查时几乎必踩这个坑。
+ * 所以把状态搬到页面世界，让 __ytBilingual 直接可用。
+ */
+export const DEBUG_STATE = 'YT_BILINGUAL_DEBUG_STATE';
+
+export interface DebugState {
+  adapter: string | null;
+  track: unknown;
+  lines: unknown[];
+  snapshot: unknown;
+}

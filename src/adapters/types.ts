@@ -32,4 +32,7 @@ export interface SiteAdapter {
 
   /** 关掉站点自带的字幕，避免和我们的覆盖层重叠。 */
   hideNativeSubtitles(): void;
+
+  /** SPA 导航到新视频时清空上一支的残留状态。 */
+  reset?(): void;
 }

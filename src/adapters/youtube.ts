@@ -16,6 +16,7 @@ import type {
   TrackKind,
 } from '../subtitle/types.ts';
 import type { SiteAdapter } from './types.ts';
+import { noteInterceptedUrl } from './x.ts';
 
 /** MAIN world 报上来的信息，随导航更新。 */
 interface PageState {
@@ -59,7 +60,12 @@ export function listenToMainWorld(): void {
       state.from = msg.from;
       if (msg.tracks.length > 0) state.tracks = msg.tracks;
     } else if (msg.type === 'TIMEDTEXT_URL') {
-      if (!state.interceptedUrls.includes(msg.url)) {
+      // m3u8 是 X 的字幕来源，转给它的 adapter
+      noteInterceptedUrl(msg.url);
+      if (
+        msg.url.includes('/api/timedtext') &&
+        !state.interceptedUrls.includes(msg.url)
+      ) {
         state.interceptedUrls.push(msg.url);
       }
     }
@@ -67,7 +73,7 @@ export function listenToMainWorld(): void {
 }
 
 /** 导航到新视频后清空上一支视频的残留。 */
-export function resetPageState(): void {
+function resetPageState(): void {
   state.videoId = null;
   state.tracks = [];
   state.interceptedUrls = [];
@@ -165,6 +171,8 @@ export const youtubeAdapter: SiteAdapter = {
     );
     if (captions) captions.style.display = 'none';
   },
+
+  reset: resetPageState,
 
   async fetchSubtitles(signal) {
     const videoId = this.videoId();
