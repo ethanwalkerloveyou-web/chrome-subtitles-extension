@@ -90,6 +90,7 @@ function buildRequest(
     targetLang: settings.translation.targetLang,
     domain: settings.translation.domain,
     glossary: settings.translation.glossary,
+    systemPrompt: settings.translation.systemPrompt,
   };
 }
 

@@ -23,7 +23,6 @@ const BACKDROPS = [
 
 const SAMPLE = {
   english: 'So the key insight here is that attention is all you need.',
-  pinyin: 'suǒ yǐ zhè lǐ de guān jiàn zài yú, zhù yì lì jī zhì jiù gòu le',
   chinese: '所以这里的关键在于，注意力机制就够了。',
 };
 
@@ -34,7 +33,6 @@ const SAMPLE = {
  */
 const SAMPLE_SHORT = {
   english: 'attention is all you need.',
-  pinyin: 'zhù yì lì jī zhì jiù gòu le',
   chinese: '注意力机制就够了。',
 };
 

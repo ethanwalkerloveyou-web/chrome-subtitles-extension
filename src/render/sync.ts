@@ -7,6 +7,38 @@
 
 import type { RenderLine } from '../translate/types.ts';
 
+/**
+ * 把新翻好的一段合并进现有字幕，按时间覆盖。
+ *
+ * 用途是「流式」显示：一开始先用英文原文把整条时间轴铺好（占位），
+ * 每批译文回来后，就用它盖掉自己时间范围内的占位行 —— 于是字幕从第 0 秒起
+ * 就跟着人声走，译文翻到哪补到哪，而不是干等整批翻完才「唰」地刷出一大片。
+ *
+ * incoming 覆盖它 [最早 start, 最晚 end] 这个区间：区间内的旧行（占位或上一版
+ * 译文）整体清掉换成 incoming，区间外的旧行原样保留。incoming 为空则不动。
+ */
+export function mergeRenderLines(
+  base: RenderLine[],
+  incoming: RenderLine[],
+): RenderLine[] {
+  if (incoming.length === 0) return [...base].sort(byStart);
+
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const l of incoming) {
+    if (l.startMs < lo) lo = l.startMs;
+    if (l.endMs > hi) hi = l.endMs;
+  }
+
+  // 与 [lo, hi) 有重叠的旧行让位给 incoming；其余保留
+  const kept = base.filter((l) => l.endMs <= lo || l.startMs >= hi);
+  return [...kept, ...incoming].sort(byStart);
+}
+
+function byStart(a: RenderLine, b: RenderLine): number {
+  return a.startMs - b.startMs;
+}
+
 /** 在有序数组里找当前时间对应的那一行。 */
 export function findLineAt(
   lines: RenderLine[],

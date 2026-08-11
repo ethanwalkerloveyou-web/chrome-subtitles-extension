@@ -8,8 +8,6 @@ export interface RenderLine {
   endMs: number;
   en: string;
   zh: string;
-  /** 中文译文的拼音，在 service worker 里生成。 */
-  pinyin?: string;
   /** 模型标出的难词，用于高亮和生词本。 */
   hard: string[];
 }
@@ -32,6 +30,8 @@ export interface BatchRequest {
   targetLang: string;
   domain: string;
   glossary: { en: string; zh: string }[];
+  /** 用户在设置页自定义的系统提示词模板；留空用默认。 */
+  systemPrompt?: string;
 }
 
 export interface TranslationProvider {

@@ -11,7 +11,7 @@
 
 - 在 YouTube 播放页叠加一层「英文原文 + 中文译文」双语字幕
 - 译文由大模型生成，模型 / API Key / 目标语言可在设置页配置
-- 面向中文学习者：拼音、生词本、单句重播
+- 面向中文学习者：难词高亮、生词本、单句重播
 
 **v0 明确不做**
 
@@ -34,14 +34,13 @@
 │                                                        │
 │                                                        │
 │      So the key insight here is that attention         │  ← 英文原文（小号、半透明）
-│      suǒ yǐ  zhè lǐ  de  guān jiàn  zài yú             │  ← 拼音（可关）
 │      所以这里的关键在于，注意力机制                       │  ← 中文译文（大号、白色）
 │                                                        │
 │  ▶  ━━━━━━━━━●───────────────────  12:34 / 45:01      │
 └────────────────────────────────────────────────────────┘
 ```
 
-- 三行布局可在设置里切换：仅中文 / 仅英文 / 双语 / 双语+拼音
+- 两层布局可在设置里切换：仅中文 / 仅英文 / 双语
 - 字号、透明度、垂直位置可调；字幕层可鼠标拖动
 - 鼠标悬停在中文词上 → 高亮；单击 → 弹出释义小卡片，可「加入生词本」
 - 全屏、剧场模式、迷你播放器下都正常跟随
@@ -275,14 +274,14 @@ YouTube 是单页应用，切换视频不会重新加载页面。监听 `yt-navi
 
 | 数据 | 位置 | 说明 |
 |---|---|---|
-| 翻译结果 | IndexedDB | key = `${videoId}:${trackId}:${targetLang}:${modelId}:${promptVersion}` |
+| 翻译结果 | IndexedDB | key = `${videoId}:${trackId}:${targetLang}:${modelId}:${promptVersion}:${promptHash}` |
 | 生词本 | IndexedDB | 词 / 例句 / 来源视频 + 时间戳 / 添加时间 |
 | 配置、API Key | `chrome.storage.local` | |
 | 用量统计 | `chrome.storage.local` | 按月累计 token 数和估算金额 |
 
 一小时视频的翻译结果约 200~400 KB。加 `unlimitedStorage` 权限。
 
-缓存 key 里带 `promptVersion` —— 改了提示词之后旧缓存自动失效，不会拿旧结果糊弄自己。
+缓存 key 里带 `promptVersion` 和 `promptHash` —— 前者在改内置默认提示词时手动加一，后者是用户在设置页自定义提示词内容的短哈希。改了提示词（无论改默认还是自己填的）旧缓存都自动失效，不会拿旧结果糊弄自己。
 
 ---
 
@@ -338,7 +337,6 @@ type SourceLine = { id: number; text: string; start: number; end: number };
 
 type TranslatedLine = SourceLine & {
   zh: string;
-  pinyin?: string;     // 本地用 pinyin-pro 生成，不消耗 token
   hard: string[];
 };
 
@@ -386,7 +384,6 @@ src/
     sync.ts               # rAF 同步循环
     styles.css
   learn/
-    pinyin.ts             # pinyin-pro 封装
     vocab.ts              # 生词本
     export.ts             # 导出 Anki / CSV
   store/
@@ -454,7 +451,7 @@ Chrome → `chrome://extensions` → 打开右上角「开发者模式」→「�
 其余都有合理默认值。可选项：
 
 - 目标语言：简体中文（默认）/ 繁体中文
-- 显示模式：双语 + 拼音（默认）
+- 显示模式：双语（默认）/ 仅中文 / 仅英文
 - 术语表：一行一条 `English term = 中文译法`
 - 领域提示：比如「机器学习技术分享」，会拼进提示词
 
@@ -479,7 +476,7 @@ Chrome → `chrome://extensions` → 打开右上角「开发者模式」→「�
 
 - 全片双语对照文本，点任意一句 → 视频跳到该时间点
 - 本视频生词列表
-- 「导出 Anki」按钮 → 生成 CSV（正面：中文词 / 背面：拼音 + 释义 + 例句 + 视频链接）
+- 「导出 Anki」按钮 → 生成 CSV（正面：中文词 / 背面：释义 + 例句 + 视频链接）
 
 ---
 
@@ -492,7 +489,7 @@ Chrome → `chrome://extensions` → 打开右上角「开发者模式」→「�
 | **M3 翻译** | Anthropic Provider、分批并发、结构化输出、重试 | 命令行触发能翻译完整一集，JSON 无损 |
 | **M4 渲染** | Shadow DOM 覆盖层、rAF 同步、全屏、SPA 导航 | 双语字幕正常显示，切视频不出错 |
 | **M5 缓存 + 优先级** | IndexedDB、播放位置优先、进度徽标 | 第二次打开秒开，首次 3 秒内出字幕 |
-| **M6 学习功能** | 拼音、生词点击、生词本、Anki 导出、快捷键 | 能完整走一遍「看 → 标记 → 导出」 |
+| **M6 学习功能** | 生词点击、生词本、Anki 导出、快捷键 | 能完整走一遍「看 → 标记 → 导出」 |
 | **v1+** | OpenAI 兼容 Provider、Bilibili adapter、用量面板 | |
 | **v2** | Batch API 夜间预翻译、tabCapture + ASR | |
 
@@ -519,6 +516,5 @@ M1 开始动手前需要确认的：
 
 1. 侧边栏用 Side Panel API 还是就做在 popup 里？（Side Panel 体验更好，但要 Chrome 114+）
 2. 生词释义从哪来？—— 让翻译时顺带返回（省一次调用），还是点击时单独查？
-3. 拼音标注默认开还是默认关？
 
-这三个都不阻塞 M1~M3，可以边做边定。
+这两个都不阻塞 M1~M3，可以边做边定。

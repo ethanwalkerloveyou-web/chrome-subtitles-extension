@@ -55,16 +55,20 @@ export interface TranslationSettings {
   /** 领域提示，拼进系统提示词，例如「机器学习技术分享」。 */
   domain: string;
   glossary: GlossaryEntry[];
+  /**
+   * 自定义的系统提示词模板（设置页可编辑）。留空表示用内置默认模板。
+   * 想翻成中文以外的语言，改这里最直接。输出格式等硬约束由程序固定追加。
+   */
+  systemPrompt: string;
 }
 
 // ---------------------------------------------------------------- 字幕
 
-/** 字幕的三层内容，数组顺序即从上到下的显示顺序。 */
-export type LayerId = 'english' | 'pinyin' | 'chinese';
+/** 字幕的两层内容，数组顺序即从上到下的显示顺序。 */
+export type LayerId = 'english' | 'chinese';
 
 export const LAYER_LABELS: Record<LayerId, string> = {
   english: '英文原文',
-  pinyin: '拼音',
   chinese: '中文译文',
 };
 
@@ -215,23 +219,17 @@ export const DEFAULT_SETTINGS: Settings = {
     targetLang: 'zh-CN',
     domain: '',
     glossary: [],
+    systemPrompt: '',
   },
   subtitle: {
     enabled: true,
-    order: ['english', 'pinyin', 'chinese'],
+    order: ['english', 'chinese'],
     layers: {
       english: {
         enabled: true,
         fontSize: 18,
         color: '#d8dee9',
         opacity: 0.75,
-        bold: false,
-      },
-      pinyin: {
-        enabled: true,
-        fontSize: 15,
-        color: '#8fbcbb',
-        opacity: 0.85,
         bold: false,
       },
       chinese: {

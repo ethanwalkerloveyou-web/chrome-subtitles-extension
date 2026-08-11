@@ -302,11 +302,6 @@ check(
   shown?.layers?.english?.includes('key insight'),
   JSON.stringify(shown?.layers),
 );
-check(
-  '拼音层有内容（service worker 里生成）',
-  /[a-zāáǎàēéěèīíǐìōóǒòūúǔù]/i.test(shown?.layers?.pinyin ?? ''),
-  JSON.stringify(shown?.layers?.pinyin),
-);
 
 // 4. 空隙处不显示字幕
 await seekTo(page, 6.5);

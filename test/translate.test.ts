@@ -16,10 +16,16 @@ import {
   translateTrack,
 } from '../src/translate/pipeline.ts';
 import { parseModelLines } from '../src/translate/providers.ts';
-import type { TranslationProvider } from '../src/translate/types.ts';
+import {
+  buildSystemPrompt,
+  DEFAULT_SYSTEM_PROMPT,
+} from '../src/translate/prompt.ts';
+import type { BatchRequest, TranslationProvider } from '../src/translate/types.ts';
 import { DEFAULT_SETTINGS, parseExtraBody } from '../src/store/settings.ts';
+import { hashString } from '../src/store/cache.ts';
 import type { SourceLine, SubtitleTrack } from '../src/subtitle/types.ts';
-import { findLineAt } from '../src/render/sync.ts';
+import { findLineAt, mergeRenderLines } from '../src/render/sync.ts';
+import type { RenderLine } from '../src/translate/types.ts';
 
 // ---------------------------------------------------------------- WebVTT
 
@@ -423,6 +429,132 @@ describe('translateTrack 失败统计', () => {
 });
 
 // ---------------------------------------------------------------- 同步
+
+// ---------------------------------------------------------------- 提示词
+
+describe('buildSystemPrompt', () => {
+  const req = (over: Partial<BatchRequest> = {}): BatchRequest => ({
+    lines: [],
+    kind: 'manual',
+    context: '',
+    targetLang: 'zh-CN',
+    domain: '',
+    glossary: [],
+    ...over,
+  });
+
+  it('默认模板：替换 {lang}，不残留占位符，附带 hard 规则', () => {
+    const p = buildSystemPrompt(req());
+    assert.ok(p.includes('简体中文'));
+    assert.ok(!p.includes('{lang}'));
+    assert.ok(!p.includes('{domain}'));
+    assert.ok(p.includes('hard 字段'));
+    assert.ok(p.includes('换行符'));
+  });
+
+  it('{domain} 有领域提示时展开，没有时留空', () => {
+    assert.ok(buildSystemPrompt(req({ domain: '机器学习' })).includes('机器学习'));
+    assert.ok(!buildSystemPrompt(req()).includes('视频内容领域'));
+  });
+
+  it('自定义模板生效，并仍追加格式硬规则', () => {
+    const p = buildSystemPrompt(
+      req({ systemPrompt: '把字幕翻成地道的日语，读者是日语学习者。' }),
+    );
+    assert.ok(p.includes('日语'));
+    // 用户模板里没写这些，但程序仍会追加
+    assert.ok(p.includes('hard 字段'));
+    assert.ok(p.includes('换行符'));
+    // 不该再带默认模板的中文框架
+    assert.ok(!p.includes('正在学简体中文的英文母语者'));
+  });
+
+  it('自定义模板里的 {lang} 占位符也会被替换', () => {
+    const p = buildSystemPrompt(
+      req({ targetLang: 'zh-TW', systemPrompt: '译成{lang}。' }),
+    );
+    assert.ok(p.includes('繁體中文'));
+    assert.ok(!p.includes('{lang}'));
+  });
+
+  it('空白自定义模板退回默认', () => {
+    assert.equal(buildSystemPrompt(req({ systemPrompt: '   ' })), buildSystemPrompt(req()));
+  });
+
+  it('默认模板导出的常量本身带占位符', () => {
+    assert.ok(DEFAULT_SYSTEM_PROMPT.includes('{lang}'));
+  });
+});
+
+describe('hashString', () => {
+  it('相同输入相同输出，不同输入不同输出', () => {
+    assert.equal(hashString('abc'), hashString('abc'));
+    assert.notEqual(hashString('abc'), hashString('abd'));
+  });
+  it('空串给空哈希（默认模板不额外占用缓存桶）', () => {
+    assert.equal(hashString(''), '');
+  });
+});
+
+describe('mergeRenderLines', () => {
+  const rl = (startMs: number, endMs: number, zh = ''): RenderLine => ({
+    startMs,
+    endMs,
+    en: 'en',
+    zh,
+    hard: [],
+  });
+
+  it('译文盖掉自己时间范围内的英文占位', () => {
+    const seed = [rl(0, 1000), rl(1000, 2000), rl(2000, 3000)];
+    const merged = mergeRenderLines(seed, [rl(1000, 2000, '译文')]);
+    // 中间那条被替换，首尾占位保留
+    assert.equal(merged.length, 3);
+    assert.equal(merged[1]!.zh, '译文');
+    assert.equal(merged[0]!.zh, '');
+    assert.equal(merged[2]!.zh, '');
+  });
+
+  it('区间外的占位一条不丢', () => {
+    const seed = [rl(0, 1000), rl(5000, 6000)];
+    const merged = mergeRenderLines(seed, [rl(2000, 3000, '译文')]);
+    assert.deepEqual(
+      merged.map((l) => [l.startMs, l.endMs]),
+      [[0, 1000], [2000, 3000], [5000, 6000]],
+    );
+  });
+
+  it('一段占位被拆成多条译文（自动字幕重新断句）', () => {
+    const seed = [rl(0, 9000)]; // 一整段粗切
+    const fine = [rl(0, 3000, 'a'), rl(3000, 6000, 'b'), rl(6000, 9000, 'c')];
+    const merged = mergeRenderLines(seed, fine);
+    assert.equal(merged.length, 3);
+    assert.deepEqual(merged.map((l) => l.zh), ['a', 'b', 'c']);
+  });
+
+  it('结果始终按时间排序', () => {
+    const merged = mergeRenderLines(
+      [rl(4000, 5000), rl(0, 1000)],
+      [rl(2000, 3000)],
+    );
+    const starts = merged.map((l) => l.startMs);
+    assert.deepEqual(starts, [...starts].sort((a, b) => a - b));
+  });
+
+  it('incoming 为空时原样返回（排序后）', () => {
+    const merged = mergeRenderLines([rl(1000, 2000), rl(0, 1000)], []);
+    assert.deepEqual(merged.map((l) => l.startMs), [0, 1000]);
+  });
+
+  it('边界相接不算重叠（endMs === 下一条 startMs）', () => {
+    const seed = [rl(0, 1000), rl(1000, 2000)];
+    // incoming 正好占 [1000,2000)，只应替换第二条
+    const merged = mergeRenderLines(seed, [rl(1000, 2000, 'x')]);
+    assert.equal(merged.length, 2);
+    assert.equal(merged[0]!.zh, '');
+    assert.equal(merged[1]!.zh, 'x');
+  });
+});
 
 describe('findLineAt', () => {
   const rendered = [

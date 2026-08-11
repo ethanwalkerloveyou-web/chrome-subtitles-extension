@@ -24,10 +24,11 @@ export interface CachedTranslation {
 }
 
 /**
- * 缓存 key 带上模型和提示词版本。
+ * 缓存 key 带上模型、提示词版本和自定义提示词内容。
  *
  * 换了模型或改了提示词之后，旧结果就不该再用了 —— 否则调完提示词
- * 还在拿旧译文，会以为改动没生效。
+ * 还在拿旧译文，会以为改动没生效。promptHash 让「在设置页手改提示词」
+ * 也算作提示词变化（PROMPT_VERSION 只在改内置默认时才动）。
  */
 export function cacheKey(parts: {
   videoId: string;
@@ -35,6 +36,8 @@ export function cacheKey(parts: {
   targetLang: string;
   model: string;
   promptVersion: number;
+  /** 自定义提示词内容的短哈希；用默认模板时为空。 */
+  promptHash?: string;
 }): string {
   return [
     parts.videoId,
@@ -42,7 +45,18 @@ export function cacheKey(parts: {
     parts.targetLang,
     parts.model,
     `p${parts.promptVersion}`,
+    `h${parts.promptHash ?? ''}`,
   ].join('|');
+}
+
+/** djb2 短哈希，只用于给缓存 key 区分不同的自定义提示词，不追求抗碰撞。 */
+export function hashString(s: string): string {
+  if (!s) return '';
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(36);
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;

@@ -78,7 +78,7 @@ export function containerStyle(
   };
 }
 
-/** 单层文本（英文 / 拼音 / 中文）。 */
+/** 单层文本（英文 / 中文）。 */
 export function layerStyle(
   layer: LayerStyle,
   s: SubtitleSettings,

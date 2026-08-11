@@ -139,8 +139,7 @@ export class SubtitleOverlay {
       const layer = this.settings.layers[id];
       if (!layer.enabled) continue;
 
-      const text =
-        id === 'english' ? line.en : id === 'pinyin' ? line.pinyin : line.zh;
+      const text = id === 'english' ? line.en : line.zh;
       if (!text) continue;
 
       const p = document.createElement('div');

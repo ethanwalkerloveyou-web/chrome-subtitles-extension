@@ -26,7 +26,7 @@ const FONTS = FONT_FAMILY_PRESETS.map((f) => ({
   label: f.label,
 }));
 
-/** 一层内容（英文 / 拼音 / 中文）的完整样式设置。 */
+/** 一层内容（英文 / 中文）的完整样式设置。 */
 function LayerCard({
   id,
   layer,
@@ -143,7 +143,7 @@ export default function SubtitleSection({
     <>
       <Section
         title="展示内容"
-        description="三层内容各自独立开关，顺序可调。至少要保留一层。"
+        description="英文与中文两层各自独立开关，顺序可调。至少要保留一层。"
       >
         {subtitle.order.map((id, index) => (
           <LayerCard

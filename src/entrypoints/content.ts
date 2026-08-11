@@ -2,7 +2,7 @@ import { siteAdapters } from '../adapters/index.ts';
 import type { SiteAdapter } from '../adapters/types.ts';
 import { listenToMainWorld, pageSnapshot } from '../adapters/youtube.ts';
 import { SubtitleOverlay } from '../render/overlay.ts';
-import { SubtitleSync } from '../render/sync.ts';
+import { mergeRenderLines, SubtitleSync } from '../render/sync.ts';
 import { recordTrack } from '../store/diagnostics.ts';
 import {
   loadSettings,
@@ -29,6 +29,23 @@ interface DebugHandle {
 
 function log(...args: unknown[]) {
   console.log('%c[双语字幕]', 'color:#6fb3e0;font-weight:bold', ...args);
+}
+
+/**
+ * 用字幕轨的英文原文铺一条占位时间轴（zh 留空）。
+ *
+ * 翻译是逐批异步回来的，在译文到达前先把英文按原始时间戳显示出来，
+ * 字幕就能从一开始跟着人声走；每批译文回来再逐段盖掉对应的占位行。
+ * 英文原文的时间戳是最权威的（直接来自字幕文件），所以占位天然对得上画面。
+ */
+function seedFromTrack(track: SubtitleTrack): RenderLine[] {
+  return track.lines.map((l) => ({
+    startMs: l.startMs,
+    endMs: l.endMs,
+    en: l.text,
+    zh: '',
+    hard: [],
+  }));
 }
 
 /**
@@ -144,6 +161,8 @@ class Session {
         ` · ${track.lines.length} 段 · 来源 ${track.source}`,
     );
 
+    // 先用英文原文铺好时间轴，字幕立刻跟着人声走；译文逐批盖上来
+    this.lines = seedFromTrack(track);
     this.mountOverlay();
     this.startTranslation(track);
     publishDebugState(this);
@@ -192,6 +211,8 @@ class Session {
 
     this.sync = new SubtitleSync(video, (line) => this.overlay?.show(line));
     this.sync.start();
+    // 立刻把已有的行（先是英文占位，后续是译文）喂给同步循环
+    this.sync.setLines(this.lines);
 
     this.remountTimer = window.setInterval(() => {
       // 原生字幕的隐藏也要反复补 —— 用户点 CC 按钮 / 播放器重建
@@ -213,9 +234,10 @@ class Session {
 
     port.onMessage.addListener((msg: FromWorker) => {
       if (msg.type === 'LINES') {
-        this.lines = msg.replace
-          ? msg.lines
-          : [...this.lines, ...msg.lines].sort((a, b) => a.startMs - b.startMs);
+        // replace（缓存命中）时回到英文占位打底，再盖上缓存的译文，
+        // 没翻到的段落仍留着英文；增量批次则直接盖在当前结果上
+        const base = msg.replace ? seedFromTrack(track) : this.lines;
+        this.lines = mergeRenderLines(base, msg.lines);
         this.sync?.setLines(this.lines);
         publishDebugState(this);
       } else if (msg.type === 'PROGRESS') {

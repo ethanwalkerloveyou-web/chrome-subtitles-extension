@@ -317,6 +317,20 @@ body {
   line-height: 1.45;
 }
 
+.prompt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+.prompt-actions .combo-hint {
+  margin: 0;
+}
+.prompt-actions .btn {
+  flex: none;
+}
+
 /* 开关 */
 
 .toggle {

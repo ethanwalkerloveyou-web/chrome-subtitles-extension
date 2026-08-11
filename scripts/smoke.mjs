@@ -80,18 +80,16 @@ console.log('落盘的模型:', saved?.llm?.models?.anthropic);
 const previewSize = await page.$eval('.preview-stage p', (e) => e.style.fontSize);
 console.log('预览英文层字号:', previewSize);
 
-// 4. 关掉一层，预览应当少一行
+// 4. 关掉英文层，预览应当只剩中文一行
 await page.locator('.layer-card').first().locator('.layer-head .toggle').click();
 await page.waitForTimeout(200);
 const after = await page.$$eval('.preview-stage p', (e) => e.length);
 console.log('关掉英文层后预览层数:', after);
 
-// 5. 只剩最后一层时，开关应当被锁住（防止字幕整个消失）
-await page.locator('.layer-card').nth(1).locator('.layer-head .toggle').click();
-await page.waitForTimeout(150);
+// 5. 只剩最后一层（中文）时，它的开关应当被锁住（防止字幕整个消失）
 const lastDisabled = await page
   .locator('.layer-card')
-  .nth(2)
+  .nth(1)
   .locator('.layer-head .toggle input')
   .isDisabled();
 console.log('最后一层开关被锁住:', lastDisabled);

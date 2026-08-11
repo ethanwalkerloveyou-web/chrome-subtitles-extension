@@ -1,5 +1,6 @@
 import type { TargetLang, TranslationSettings } from '../../store/settings.ts';
-import { Field, Section, Select, TextInput } from './controls.tsx';
+import { DEFAULT_SYSTEM_PROMPT } from '../../translate/prompt.ts';
+import { Field, Section, Select, TextArea, TextInput } from './controls.tsx';
 
 const LANGS: { value: TargetLang; label: string }[] = [
   { value: 'zh-CN', label: '简体中文' },
@@ -33,6 +34,10 @@ export default function TranslationSection({
   translation: TranslationSettings;
   patch: (p: Partial<TranslationSettings>) => void;
 }) {
+  // 留空表示用默认模板；文本框里始终把默认模板显示出来，方便直接看和改
+  const isCustomPrompt = translation.systemPrompt.trim().length > 0;
+  const promptValue = translation.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+
   return (
     <Section
       title="翻译"
@@ -73,6 +78,31 @@ export default function TranslationSection({
       <p className="field-footnote">
         术语表在失焦时保存，当前 {translation.glossary.length} 条。
       </p>
+
+      <Field
+        label="翻译提示词"
+        hint="发给模型的系统提示词。想翻成中文以外的语言、或改翻译风格，直接改这段即可。{lang} 会替换成上面选的目标语言，{domain} 替换成领域提示。输出格式、断句、难词等硬规则由程序自动追加，无需在此编写"
+      >
+        <TextArea
+          value={promptValue}
+          onChange={(systemPrompt) => patch({ systemPrompt })}
+          rows={12}
+          monospace
+        />
+        <div className="prompt-actions">
+          <span className="combo-hint">
+            {isCustomPrompt ? '● 已自定义' : '当前为默认模板'}
+          </span>
+          <button
+            type="button"
+            className="btn is-ghost"
+            disabled={!isCustomPrompt}
+            onClick={() => patch({ systemPrompt: '' })}
+          >
+            恢复默认
+          </button>
+        </div>
+      </Field>
     </Section>
   );
 }

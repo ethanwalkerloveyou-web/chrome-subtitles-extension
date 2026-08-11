@@ -7,8 +7,7 @@
  *  2. 每翻完一批就推回去，字幕能尽快显示，不必等全片翻完
  */
 
-import { pinyin } from 'pinyin-pro';
-import { cacheKey, readCache, writeCache } from '../store/cache.ts';
+import { cacheKey, hashString, readCache, writeCache } from '../store/cache.ts';
 import { activeCredentials, type Settings } from '../store/settings.ts';
 import type { SubtitleTrack } from '../subtitle/types.ts';
 import { translateTrack } from './pipeline.ts';
@@ -28,21 +27,6 @@ export type FromWorker =
   | { type: 'PROGRESS'; progress: Progress }
   | { type: 'ERROR'; message: string };
 
-/**
- * 给中文译文加拼音。
- *
- * 放在 SW 里做：pinyin-pro 带着词典有两百多 KB，塞进 content script
- * 会拖慢每个 YouTube 页面的加载；而且结果要跟译文一起进缓存。
- */
-function addPinyin(lines: RenderLine[]): RenderLine[] {
-  return lines.map((l) => ({
-    ...l,
-    pinyin: l.zh
-      ? pinyin(l.zh, { toneType: 'symbol', nonZh: 'consecutive' })
-      : '',
-  }));
-}
-
 function keyFor(track: SubtitleTrack, settings: Settings): string {
   return cacheKey({
     videoId: track.videoId,
@@ -50,6 +34,8 @@ function keyFor(track: SubtitleTrack, settings: Settings): string {
     targetLang: settings.translation.targetLang,
     model: activeCredentials(settings.llm).model,
     promptVersion: PROMPT_VERSION,
+    // 自定义提示词也算提示词变化，改了就不复用旧译文
+    promptHash: hashString(settings.translation.systemPrompt.trim()),
   });
 }
 
@@ -115,18 +101,16 @@ export function handleTranslatePort(port: chrome.runtime.Port): void {
         signal: abort.signal,
         currentTimeMs: () => currentTimeMs,
         onBatch: (lines) => {
-          const withPinyin = addPinyin(lines);
-          collected.push(...withPinyin);
-          send({ type: 'LINES', lines: withPinyin });
+          collected.push(...lines);
+          send({ type: 'LINES', lines });
         },
         onProgress: (progress) => send({ type: 'PROGRESS', progress }),
       });
 
-      const final = addPinyin(result.lines);
       await writeCache({
         key,
         videoId: track.videoId,
-        lines: final,
+        lines: result.lines,
         // 有失败批次就只算 partial —— 之前失败也存成 complete，
         // Key 配错的那次「全英文」结果会永久霸占缓存，修好 Key 也没用
         status: result.failedBatches === 0 ? 'complete' : 'partial',
