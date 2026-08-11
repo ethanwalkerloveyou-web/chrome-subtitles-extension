@@ -33,19 +33,35 @@ function outlineShadow(color: string, width: number): string {
   ].join(', ');
 }
 
-/** 字幕外层容器：定位、宽度、背景。 */
-export function containerStyle(s: SubtitleSettings): Record<string, string> {
+/**
+ * 字幕外层容器：定位、宽度、背景。
+ *
+ * positioned=false 时去掉绝对定位，用于设置页里 1:1 实际像素那条预览 ——
+ * 它在正常文档流里，套上 absolute 会错位。
+ */
+export function containerStyle(
+  s: SubtitleSettings,
+  { positioned = true }: { positioned?: boolean } = {},
+): Record<string, string> {
   const bg =
     s.background.mode === 'solid'
       ? withAlpha(s.background.color, s.background.opacity)
       : 'transparent';
 
+  const placement: Record<string, string> = positioned
+    ? {
+        position: 'absolute',
+        left: '50%',
+        bottom: `${s.position.bottomOffset}px`,
+        transform: 'translateX(-50%)',
+        maxWidth: `${s.position.maxWidth}%`,
+        // 播放器控制栏 z-index 在 30 上下，这里压过它
+        zIndex: '60',
+      }
+    : { position: 'relative', maxWidth: '100%' };
+
   return {
-    position: 'absolute',
-    left: '50%',
-    bottom: `${s.position.bottomOffset}px`,
-    transform: 'translateX(-50%)',
-    maxWidth: `${s.position.maxWidth}%`,
+    ...placement,
     boxSizing: 'border-box',
     padding: `${s.background.paddingY}px ${s.background.paddingX}px`,
     background: bg,
@@ -59,8 +75,6 @@ export function containerStyle(s: SubtitleSettings): Record<string, string> {
     lineHeight: '1.35',
     pointerEvents: 'auto',
     userSelect: 'none',
-    // 播放器控制栏 z-index 在 30 上下，这里压过它
-    zIndex: '60',
   };
 }
 

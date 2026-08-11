@@ -3,6 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      在独立标签页里打开，而不是 chrome://extensions 上的小弹窗。
+      弹窗只有 ~800px 宽，设置页两栏布局会被压塌。
+      注意：WXT 的入口选项走 meta 标签，写在 wxt.config.ts 的 manifest 里会被覆盖。
+    -->
+    <meta name="manifest.open_in_tab" content="true" />
     <title>YouTube 双语字幕 — 设置</title>
   </head>
   <body>

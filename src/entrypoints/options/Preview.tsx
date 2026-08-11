@@ -27,6 +27,17 @@ const SAMPLE = {
   chinese: '所以这里的关键在于，注意力机制就够了。',
 };
 
+/**
+ * 1:1 预览用的短句。
+ * 那一条是用来看字体和描边清不清楚的，不是看排版，
+ * 用长句只会横向溢出被切掉。
+ */
+const SAMPLE_SHORT = {
+  english: 'attention is all you need.',
+  pinyin: 'zhù yì lì jī zhì jiù gòu le',
+  chinese: '注意力机制就够了。',
+};
+
 /** 中文示例句里被标为难词的片段，用于演示高亮效果。 */
 const HARD_WORDS = ['关键', '注意力机制'];
 
@@ -78,7 +89,7 @@ export default function Preview({ subtitle }: { subtitle: SubtitleSettings }) {
   const active = BACKDROPS.find((b) => b.id === backdrop)!;
   const { ref, scale } = useStageScale();
 
-  function renderLayer(id: LayerId) {
+  function renderLayer(id: LayerId, sample: typeof SAMPLE = SAMPLE) {
     const layer = subtitle.layers[id];
     if (!layer.enabled) return null;
     const style = asReactStyle(layerStyle(layer, subtitle));
@@ -86,7 +97,7 @@ export default function Preview({ subtitle }: { subtitle: SubtitleSettings }) {
     if (id === 'chinese' && subtitle.highlightHardWords) {
       return (
         <p key={id} style={style}>
-          {splitHardWords(SAMPLE.chinese, HARD_WORDS).map((part, i) =>
+          {splitHardWords(sample.chinese, HARD_WORDS).map((part, i) =>
             part.hard ? (
               <span key={i} style={asReactStyle(hardWordStyle(subtitle))}>
                 {part.text}
@@ -101,7 +112,7 @@ export default function Preview({ subtitle }: { subtitle: SubtitleSettings }) {
 
     return (
       <p key={id} style={style}>
-        {SAMPLE[id]}
+        {sample[id]}
       </p>
     );
   }
@@ -125,7 +136,7 @@ export default function Preview({ subtitle }: { subtitle: SubtitleSettings }) {
       </div>
 
       {/* 外框负责裁切和 16:9；内层按 1280×720 渲染后整体缩放 */}
-      <div className="preview-frame" ref={ref}>
+      <div className="preview-frame" ref={ref} title="按 1280×720 播放器等比缩放">
         <div
           className="preview-stage"
           style={{
@@ -137,7 +148,7 @@ export default function Preview({ subtitle }: { subtitle: SubtitleSettings }) {
           }}
         >
           <div style={asReactStyle(containerStyle(subtitle))}>
-            {subtitle.order.map(renderLayer)}
+            {subtitle.order.map((id) => renderLayer(id, SAMPLE))}
           </div>
           {/* 模拟 YouTube 进度条，用来检查字幕会不会被挡 */}
           <div className="fake-controls">
@@ -150,8 +161,22 @@ export default function Preview({ subtitle }: { subtitle: SubtitleSettings }) {
         </div>
       </div>
 
+      {/*
+        1:1 实际像素。上面的播放器预览缩放过，看比例准但看不清细节 ——
+        字体、描边、颜色对比这些要按真实像素看才作数。
+      */}
+      <div className="preview-actual" style={{ background: active.css }}>
+        <div className="preview-actual-inner">
+          <div style={asReactStyle(containerStyle(subtitle, { positioned: false }))}>
+            {subtitle.order.map((id) => renderLayer(id, SAMPLE_SHORT))}
+          </div>
+        </div>
+      </div>
+
       <p className="preview-note">
-        按 1280×720 播放器等比缩放，字号所见即所得。与播放器用的是同一份样式代码。
+        上：按 1280×720 播放器等比缩放，看的是字幕占画面的比例。
+        <br />
+        下：1:1 实际像素，看的是字体和描边的清晰度。
       </p>
     </div>
   );

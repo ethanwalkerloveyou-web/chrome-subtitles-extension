@@ -13,9 +13,6 @@ export default defineConfig({
     ],
     // OpenAI 兼容供应商的地址由用户在设置页填写，运行时按需申请权限
     optional_host_permissions: ['https://*/*'],
-    options_ui: {
-      open_in_tab: true,
-    },
     // main-world.js 是要注入到页面自己 JS 环境里执行的，
     // 页面必须能加载它 —— 不声明这一条，注入会静默失败。
     web_accessible_resources: [
