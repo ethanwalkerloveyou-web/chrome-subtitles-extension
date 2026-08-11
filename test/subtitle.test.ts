@@ -174,6 +174,20 @@ describe('mergeManualCues', () => {
     }
   });
 
+  it('两条 cue 之间停顿过长时断开，不把静音并进一条', () => {
+    // 三条都没有句尾标点，不加停顿断点的话会并成一条横跨 10 秒（含 4 秒静音）
+    const cues = [
+      { text: 'thinking about it', startMs: 0, endMs: 2000 },
+      { text: 'for a while', startMs: 2000, endMs: 4000 },
+      // 4 秒静音后才继续
+      { text: 'okay here we go', startMs: 8000, endMs: 10_000 },
+    ];
+    const out = mergeManualCues(cues);
+    assert.equal(out.length, 2);
+    assert.equal(out[0]!.endMs, 4000, '第一条应在停顿前收尾，不含静音');
+    assert.equal(out[1]!.startMs, 8000);
+  });
+
   it('软上限之后优先在逗号处断句', () => {
     const cues = [
       { text: 'first part of a very long sentence', startMs: 0, endMs: 4000 },
@@ -254,6 +268,16 @@ describe('alignSentencesToTokens', () => {
     const spans = alignSentencesToTokens(['完全对不上的内容'], tokens);
     assert.equal(spans.length, 1);
     assert.ok(Number.isFinite(spans[0]!.startMs));
+  });
+
+  it('句子后面是停顿时，结束时间收紧而不是干挂到下一个词', () => {
+    // "here" 在 2400 说完，下一个词 "is" 到 5000 才出现（中间 2.6 秒停顿）。
+    // 结束时间应压到「here 开始 2400 + 余量 1200」= 3600，而不是拖到 5000
+    const spans = alignSentencesToTokens(
+      ['So the key insight here', 'is attention.'],
+      tokens,
+    );
+    assert.equal(spans[0]!.endMs, 3600);
   });
 });
 

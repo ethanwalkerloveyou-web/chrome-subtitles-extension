@@ -37,8 +37,13 @@ function log(...args: unknown[]) {
  * 翻译是逐批异步回来的，在译文到达前先把英文按原始时间戳显示出来，
  * 字幕就能从一开始跟着人声走；每批译文回来再逐段盖掉对应的占位行。
  * 英文原文的时间戳是最权威的（直接来自字幕文件），所以占位天然对得上画面。
+ *
+ * 只对人工字幕铺占位：人工字幕的每条本就是句子大小，拿来占位正好；自动字幕
+ * 的源是十几~三十秒的粗切段，拿来占位会糊一大块英文在屏幕上，反而更难看 ——
+ * 自动字幕就等模型断好句的译文（正在播的那段会被优先翻，几秒内就到）。
  */
 function seedFromTrack(track: SubtitleTrack): RenderLine[] {
+  if (track.kind !== 'manual') return [];
   return track.lines.map((l) => ({
     startMs: l.startMs,
     endMs: l.endMs,

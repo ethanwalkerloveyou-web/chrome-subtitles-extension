@@ -15,6 +15,18 @@ const PAUSE_GAP_MS = 700; // 超过这个停顿视为可切分点
 const MIN_CHUNK_MS = 12_000; // 短于这个不切，避免碎片
 const MAX_CHUNK_MS = 30_000; // 超过这个强制切，避免单批太大
 
+/**
+ * 一句字幕在最后一个词「开始」之后最多再停留多久。
+ *
+ * 词级 token 的 endMs 接的是下一个词的开始，一旦这句后面跟着停顿，
+ * 直接拿它当结束时间，字幕就会在静音里干挂到下一个词才消失（甚至压到
+ * 下一句头上）。用这个上限把结束时间收紧，让字幕说完就走、跟得上音频。
+ */
+const DISPLAY_TAIL_MS = 1_200;
+
+/** 人工字幕：两条 cue 之间的停顿超过这个值就断开，别把静音也并进一条里。 */
+const MANUAL_PAUSE_MS = 1_200;
+
 /** 句尾标点。中英文都覆盖，字幕里偶尔会混。 */
 const SENTENCE_END = /[.!?。！？…]["')\]]?$/;
 
@@ -61,6 +73,11 @@ export function mergeManualCues(cues: Token[]): SourceLine[] {
   };
 
   for (const cue of cues) {
+    // 和上一条之间隔了明显的停顿，就先收尾 —— 一句话被切成几条 cue 时它们
+    // 是连着的，隔着长静音的多半是下一句了，并进来只会让字幕在静音里干挂
+    const prev = buf[buf.length - 1];
+    if (prev && cue.startMs - prev.endMs >= MANUAL_PAUSE_MS) flush();
+
     buf.push(cue);
     chars += cue.text.length + 1;
     const spanMs = cue.endMs - buf[0]!.startMs;
@@ -160,10 +177,13 @@ export function alignSentencesToTokens(
     const first = tokens[charToToken[at] ?? 0];
     const last = tokens[charToToken[Math.max(at, end - 1)] ?? tokens.length - 1];
 
-    out.push({
-      startMs: first?.startMs ?? 0,
-      endMs: last?.endMs ?? first?.startMs ?? 0,
-    });
+    const startMs = first?.startMs ?? 0;
+    const rawEnd = last?.endMs ?? startMs;
+    // 收紧结束时间：最多停到「最后一个词开始 + 余量」，不跟着 token 的
+    // endMs 一路挂到下一个词（那样遇到停顿就会在静音里干挂）
+    const endMs = Math.min(rawEnd, (last?.startMs ?? rawEnd) + DISPLAY_TAIL_MS);
+
+    out.push({ startMs, endMs });
     cursor = end;
   }
 
