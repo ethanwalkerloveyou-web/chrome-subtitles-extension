@@ -17,7 +17,7 @@ import {
 } from '../src/translate/pipeline.ts';
 import { parseModelLines } from '../src/translate/providers.ts';
 import type { TranslationProvider } from '../src/translate/types.ts';
-import { DEFAULT_SETTINGS } from '../src/store/settings.ts';
+import { DEFAULT_SETTINGS, parseExtraBody } from '../src/store/settings.ts';
 import type { SourceLine, SubtitleTrack } from '../src/subtitle/types.ts';
 import { findLineAt } from '../src/render/sync.ts';
 
@@ -325,6 +325,47 @@ describe('parseModelLines', () => {
     );
     assert.equal(out[0]!.en, 'line one line two');
     assert.equal(out[0]!.zh, '第一行第二行');
+  });
+});
+
+// ---------------------------------------------------------------- 额外请求体
+
+describe('parseExtraBody', () => {
+  it('空串 / 纯空白当作空对象', () => {
+    assert.deepEqual(parseExtraBody(''), { ok: true, value: {} });
+    assert.deepEqual(parseExtraBody('   \n '), { ok: true, value: {} });
+  });
+
+  it('解析合法的 JSON 对象', () => {
+    const r = parseExtraBody('{ "enable_thinking": false }');
+    assert.ok(r.ok);
+    assert.deepEqual(r.value, { enable_thinking: false });
+  });
+
+  it('支持嵌套对象（GLM/豆包的 thinking.type）', () => {
+    const r = parseExtraBody('{"thinking":{"type":"disabled"}}');
+    assert.ok(r.ok);
+    assert.deepEqual(r.value, { thinking: { type: 'disabled' } });
+  });
+
+  it('非法 JSON 报错而不是抛异常', () => {
+    const r = parseExtraBody('{enable_thinking: false}');
+    assert.equal(r.ok, false);
+  });
+
+  it('顶层是数组 / 字符串 / 数字都判非法（没法并进请求体）', () => {
+    assert.equal(parseExtraBody('[1,2,3]').ok, false);
+    assert.equal(parseExtraBody('"x"').ok, false);
+    assert.equal(parseExtraBody('42').ok, false);
+    assert.equal(parseExtraBody('null').ok, false);
+  });
+
+  it('默认配置里的 openai-compatible 额外体是合法 JSON', () => {
+    const r = parseExtraBody(
+      DEFAULT_SETTINGS.llm.extraBody['openai-compatible'],
+    );
+    assert.ok(r.ok);
+    assert.deepEqual(r.value, { enable_thinking: false });
   });
 });
 

@@ -66,8 +66,11 @@ content script 的 matches 规则是真的生效的，测的是完整链路。**
 `snapshot` 字段会说明取字幕走到了哪一步、失败在哪。把它整个发出来即可定位。
 
 **翻译很慢？** 用 Qwen3 / DeepSeek-R1 这类思考型模型时，模型会先思考几千
-token 再回答。设置页「关闭思考模式」默认开启，请求里会带
-`enable_thinking: false`；再不行就换非思考型模型（qwen-plus / deepseek-chat），
+token 再回答。关思考的字段各家不一样，所以设置页「思考模式 / 额外参数」是一段
+可自己填的 JSON，会原样并进请求体，OpenAI 兼容供应商默认已填
+`{ "enable_thinking": false }`。换别家时改成对应字段即可：智谱 GLM / 火山豆包
+用 `{ "thinking": { "type": "disabled" } }`。填错（供应商认不得该字段）会自动去掉
+这段重试一次，不至于整批失败。再不行就换非思考型模型（qwen-plus / deepseek-chat），
 或调高「并发请求数」。改完设置无需刷新页面，当前视频会自动重新翻译。
 
 ## 目录结构
