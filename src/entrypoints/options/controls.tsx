@@ -197,6 +197,40 @@ export function TextInput({
   );
 }
 
+/** 受控多行输入。invalid 时给红框，用于实时校验 JSON 之类的自由输入。 */
+export function TextArea({
+  value,
+  onChange,
+  rows = 3,
+  placeholder,
+  monospace,
+  invalid,
+  id,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  rows?: number;
+  placeholder?: string;
+  monospace?: boolean;
+  invalid?: boolean;
+  id?: string;
+}) {
+  return (
+    <textarea
+      id={id}
+      className={`textarea${monospace ? ' is-mono' : ''}${
+        invalid ? ' is-invalid' : ''
+      }`}
+      rows={rows}
+      value={value}
+      placeholder={placeholder}
+      spellCheck={false}
+      autoComplete="off"
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
 /**
  * 下拉预设 + 自由输入的组合。
  *

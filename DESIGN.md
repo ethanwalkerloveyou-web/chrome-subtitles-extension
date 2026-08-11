@@ -305,6 +305,8 @@ interface TranslationProvider {
 1. **Anthropic**（默认）—— 用官方 SDK `@anthropic-ai/sdk`，配 `dangerouslyAllowBrowser: true`。MV3 的 service worker 里带上 `host_permissions` 就能跨域请求，不受页面 CORS 限制。
 2. **OpenAI 兼容** —— 一个 `baseURL + apiKey + model` 的通用实现，覆盖 OpenAI、DeepSeek、Qwen、Groq、本地 Ollama、各种中转。
 
+**思考模式开关做成一段自由 JSON**（`LlmSettings.extraBody`，按供应商各存一份）。各家关/开思考的字段完全不一样，硬做成一个统一的布尔开关只会覆盖不全：Qwen3 用 `enable_thinking: false`，智谱 GLM / 火山豆包用 `thinking: {type: "disabled"}`，Anthropic 又是另一套。所以留一段 JSON 让用户自己填，请求时原样并进请求体（OpenAI 兼容并进 `/chat/completions` body，Anthropic 并进 `messages.create` 参数，用户填的键覆盖默认值）。OpenAI 兼容路径把它放进「可选参数」里，供应商若对某字段报 400 会自动去掉重试一次；设置页对这段做实时 JSON 校验，非法时给红字提示、请求侧当作空对象跳过。
+
 Anthropic 请求的关键参数：
 
 ```js

@@ -8,6 +8,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {
   activeCredentials,
+  parseExtraBody,
   type LlmSettings,
 } from '../store/settings.ts';
 import { buildSystemPrompt, buildUserPrompt, LINES_SCHEMA } from './prompt.ts';
@@ -54,6 +55,12 @@ function firstText(content: { type: string; text?: string }[]): string {
     .join('');
 }
 
+/** 解析用户填的额外请求体；解析不了就当没填，绝不因一个字段拖垮整批翻译。 */
+function extraBodyOf(raw: string): Record<string, unknown> {
+  const parsed = parseExtraBody(raw);
+  return parsed.ok ? parsed.value : {};
+}
+
 class AnthropicProvider implements TranslationProvider {
   readonly id = 'anthropic';
   private readonly llm: LlmSettings;
@@ -82,7 +89,10 @@ class AnthropicProvider implements TranslationProvider {
         },
         system: buildSystemPrompt(req),
         messages: [{ role: 'user', content: buildUserPrompt(req) }],
-      },
+        // 用户填的额外参数覆盖在最后：想改 thinking 之类就用它。
+        // SDK 是强类型的，这里必须 as 才能塞进未知键
+        ...extraBodyOf(this.llm.extraBody.anthropic),
+      } as Anthropic.MessageCreateParamsNonStreaming,
       { signal },
     );
 
@@ -128,12 +138,11 @@ class OpenAiCompatibleProvider implements TranslationProvider {
       // 各家对 json_schema 的支持不一致，json_object 是最大公约数，
       // 配合提示词里的格式说明 + 返回后的校验
       response_format: { type: 'json_object' },
+      // 用户填的额外参数（各家关思考的字段不同：Qwen 用 enable_thinking，
+      // GLM/豆包用 thinking.type 等）。解析不了就当没填（UI 会提示）。
+      // 放进 optional：供应商若认不得会 400，届时去掉这些重试一次
+      ...extraBodyOf(this.llm.extraBody['openai-compatible']),
     };
-    if (this.llm.disableThinking) {
-      // Qwen3 / DeepSeek-R1 这类思考型模型不带这个参数会先思考
-      // 几千 token 才开始回答 —— 字幕翻译等不起
-      optional.enable_thinking = false;
-    }
 
     const call = (body: Record<string, unknown>) =>
       fetch(endpoint, {

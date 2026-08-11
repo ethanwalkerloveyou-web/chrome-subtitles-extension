@@ -295,10 +295,26 @@ body {
   line-height: 1.65;
 }
 
+.textarea.is-invalid {
+  border-color: var(--err);
+}
+.textarea.is-invalid:focus {
+  box-shadow: 0 0 0 3px rgba(197, 57, 47, 0.16);
+}
+
+.combo-hint,
 .model-combo .combo-hint {
   margin: 5px 0 0;
   color: var(--muted);
   font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.field-error {
+  margin: 5px 0 0;
+  color: var(--err);
+  font-size: 11.5px;
+  line-height: 1.45;
 }
 
 /* 开关 */

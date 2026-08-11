@@ -22,11 +22,19 @@ export interface LlmSettings {
   baseUrl: string;
   effort: Effort;
   /**
-   * 请求里带 enable_thinking: false（仅 OpenAI 兼容供应商）。
-   * Qwen3 / DeepSeek-R1 这类思考型模型会先思考几千 token 再回答，
-   * 字幕翻译用不上，纯粹又慢又贵。不认识该参数的供应商会自动降级。
+   * 各供应商额外注入请求体的一段 JSON，按供应商分开存，原样合并进请求体。
+   *
+   * 「思考模式」的开关字段各家都不一样，做不成一个统一的布尔开关：
+   *   - 阿里云百炼 Qwen3：{"enable_thinking": false}
+   *   - 智谱 GLM / 火山豆包：{"thinking": {"type": "disabled"}}
+   *   - Anthropic：{"thinking": {"type": "disabled"}}（一般不建议，见下）
+   * 所以这里留成一段自由 JSON 让用户自己填。留空表示不额外注入。
+   *
+   * OpenAI 兼容供应商：合并进 /chat/completions 请求体；若供应商对某个
+   * 字段报 400，会自动去掉这段重试一次（宁可退化也别整批失败）。
+   * Anthropic：合并进 messages.create 参数，用户填的键覆盖默认值。
    */
-  disableThinking: boolean;
+  extraBody: Record<ProviderId, string>;
   /** 每批送给模型的字幕句数。太小则上下文不足，太大则单次延迟高。 */
   batchSize: number;
   /** 并发请求数。太高容易触发供应商限流。 */
@@ -192,7 +200,14 @@ export const DEFAULT_SETTINGS: Settings = {
     },
     baseUrl: '',
     effort: 'low',
-    disableThinking: true,
+    extraBody: {
+      // Anthropic 的思考由 SDK 的 adaptive + effort 处理，禁用它在 Opus 5 上
+      // 有已知副作用（见 DESIGN.md），所以默认不注入，留给用户按需覆盖
+      anthropic: '',
+      // Qwen3 / DeepSeek-R1 这类模型默认先思考几千 token 再回答，字幕翻译
+      // 用不上，默认关掉；换成别家（如 GLM）时改成对应字段即可
+      'openai-compatible': '{ "enable_thinking": false }',
+    },
     batchSize: 20,
     concurrency: 3,
   },
@@ -330,4 +345,30 @@ export function activeCredentials(llm: LlmSettings) {
 /** 至少要有一层是开的，否则字幕层等于关掉了。 */
 export function hasVisibleLayer(subtitle: SubtitleSettings): boolean {
   return subtitle.order.some((id) => subtitle.layers[id].enabled);
+}
+
+/**
+ * 校验用户填的额外请求体 JSON。
+ *
+ * 返回 `ok: false` 时不动它 —— UI 据此给出红字提示，请求侧则当作空对象跳过，
+ * 绝不把一段解析不了的文本硬塞进请求体把整批翻译搞崩。
+ *
+ * 只接受「JSON 对象」：数组、字符串、数字这些没法合并进请求体，一律判非法。
+ */
+export function parseExtraBody(
+  raw: string,
+): { ok: true; value: Record<string, unknown> } | { ok: false; error: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { ok: true, value: {} };
+
+  let doc: unknown;
+  try {
+    doc = JSON.parse(trimmed);
+  } catch {
+    return { ok: false, error: '不是合法的 JSON' };
+  }
+  if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) {
+    return { ok: false, error: '需要是一个 JSON 对象，例如 {"enable_thinking": false}' };
+  }
+  return { ok: true, value: doc as Record<string, unknown> };
 }

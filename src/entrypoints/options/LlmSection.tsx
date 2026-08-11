@@ -3,6 +3,7 @@ import { sendMessage, type TestConnectionResult } from '../../messaging.ts';
 import {
   BASE_URL_PRESETS,
   MODEL_PRESETS,
+  parseExtraBody,
   type Effort,
   type LlmSettings,
   type ProviderId,
@@ -13,8 +14,8 @@ import {
   Section,
   Select,
   Slider,
+  TextArea,
   TextInput,
-  Toggle,
 } from './controls.tsx';
 
 const PROVIDERS: { value: ProviderId; label: string }[] = [
@@ -40,6 +41,13 @@ export default function LlmSection({
   const [result, setResult] = useState<TestConnectionResult | null>(null);
 
   const isAnthropic = llm.provider === 'anthropic';
+
+  // 「思考模式 / 额外参数」按供应商各存一份，实时校验 JSON 是否合法
+  const extraBody = llm.extraBody[llm.provider];
+  const extraCheck = parseExtraBody(extraBody);
+  const extraExamples = isAnthropic
+    ? 'Claude 的思考已由 adaptive + effort 处理，一般无需填。要强制关闭可填 {"thinking": {"type": "disabled"}}，但 Opus 5 上有副作用'
+    : '例：阿里云百炼 Qwen3 {"enable_thinking": false} · 智谱 GLM / 火山豆包 {"thinking": {"type": "disabled"}}';
 
   /**
    * 自定义 Base URL 的域名不在 manifest 的 host_permissions 里，
@@ -157,18 +165,30 @@ export default function LlmSection({
         </Field>
       )}
 
-      {!isAnthropic && (
-        <Field
-          label="关闭思考模式"
-          hint="Qwen3 / DeepSeek-R1 这类模型默认先思考几千 token 再回答，字幕翻译用不上，只会又慢又贵。不支持该参数的供应商会自动忽略"
-        >
-          <Toggle
-            checked={llm.disableThinking}
-            onChange={(disableThinking) => patch({ disableThinking })}
-            label={llm.disableThinking ? '已关闭思考（推荐）' : '允许思考'}
-          />
-        </Field>
-      )}
+      <Field
+        label="思考模式 / 额外参数"
+        hint="各家关闭或开启思考的字段都不一样，这里填一段 JSON，会原样并进请求体。留空表示不注入"
+      >
+        <TextArea
+          value={extraBody}
+          onChange={(v) =>
+            patch({ extraBody: { ...llm.extraBody, [llm.provider]: v } })
+          }
+          rows={3}
+          monospace
+          placeholder={
+            isAnthropic
+              ? '{ "thinking": { "type": "disabled" } }'
+              : '{ "enable_thinking": false }'
+          }
+          invalid={!extraCheck.ok}
+        />
+        {extraCheck.ok ? (
+          <p className="combo-hint">{extraExamples}</p>
+        ) : (
+          <p className="field-error">⚠ {extraCheck.error}</p>
+        )}
+      </Field>
 
       <Field
         label="每批句数"
