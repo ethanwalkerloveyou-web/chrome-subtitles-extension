@@ -166,10 +166,20 @@ export const youtubeAdapter: SiteAdapter = {
   },
 
   hideNativeSubtitles() {
-    const captions = document.querySelector<HTMLElement>(
-      '.ytp-caption-window-container',
-    );
-    if (captions) captions.style.display = 'none';
+    // 用样式表而不是改元素的 style：字幕容器会被播放器反复重建，
+    // 改在元素上的样式跟着元素一起没了，原生字幕就会再冒出来
+    // 和我们的叠成两层。样式表挂在 head 上，重建多少次都压得住。
+    const STYLE_ID = 'yt-bilingual-hide-native';
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent =
+      '.ytp-caption-window-container { display: none !important; }';
+    document.head.appendChild(style);
+  },
+
+  restoreNativeSubtitles() {
+    document.getElementById('yt-bilingual-hide-native')?.remove();
   },
 
   reset: resetPageState,

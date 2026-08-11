@@ -7,7 +7,9 @@
 
 import type { BatchRequest } from './types.ts';
 
-export const PROMPT_VERSION = 1;
+// 2: 作废 v1 —— 修复静默失败前，Key 配错跑出的「全英文」结果被当成
+//    complete 存了缓存，必须整体作废
+export const PROMPT_VERSION = 2;
 
 /** 模型输出的 JSON Schema。用结构化输出强约束，不靠提示词祈祷。 */
 export const LINES_SCHEMA = {
@@ -51,8 +53,9 @@ export function buildSystemPrompt(req: BatchRequest): string {
     req.kind === 'asr'
       ? `
 这段文字来自自动语音识别，没有标点、没有大小写、断句随意。你要同时完成三件事：
-1. 按语义重新断句，并加上正确的标点和大小写，写进 en 字段
-2. 把每句译成${lang}，写进 zh 字段
+1. 按语义重新断句成适合字幕显示的短句（每句大约 8~15 个英文词），
+   加上正确的标点和大小写，写进 en 字段；长句拆成多条
+2. 把每句译成${lang}，写进 zh 字段，每条不超过 25 个字
 3. en 字段必须只用原文里出现过的词，顺序不变 —— 不要增删词，否则时间轴会对不上
 每条的 id 从 0 开始递增。`
       : `
@@ -63,9 +66,10 @@ export function buildSystemPrompt(req: BatchRequest): string {
 
 翻译要求：
 - 译成自然的${lang}口语，不要翻译腔。宁可意译，不要逐字对应。
-- 每行译文控制在 25 个字以内。太长的句子在语义边界处断开成多条。
+- 译文精炼紧凑，适合作为单行字幕阅读。
 - 保留说话人的语气：犹豫、强调、玩笑、反问都要体现出来。
 - 专有名词、人名、产品名保持原文或用通用译名。
+- en 和 zh 字段里绝不要出现换行符。
 ${asrExtra}${glossaryBlock(req.glossary)}
 
 hard 字段：列出这条译文里对中文学习者较难的词（大致 HSK 5 级以上、

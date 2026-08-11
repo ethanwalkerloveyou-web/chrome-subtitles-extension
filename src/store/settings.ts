@@ -21,6 +21,12 @@ export interface LlmSettings {
   /** 仅 openai-compatible 使用，例如 https://api.deepseek.com/v1 */
   baseUrl: string;
   effort: Effort;
+  /**
+   * 请求里带 enable_thinking: false（仅 OpenAI 兼容供应商）。
+   * Qwen3 / DeepSeek-R1 这类思考型模型会先思考几千 token 再回答，
+   * 字幕翻译用不上，纯粹又慢又贵。不认识该参数的供应商会自动降级。
+   */
+  disableThinking: boolean;
   /** 每批送给模型的字幕句数。太小则上下文不足，太大则单次延迟高。 */
   batchSize: number;
   /** 并发请求数。太高容易触发供应商限流。 */
@@ -186,6 +192,7 @@ export const DEFAULT_SETTINGS: Settings = {
     },
     baseUrl: '',
     effort: 'low',
+    disableThinking: true,
     batchSize: 20,
     concurrency: 3,
   },

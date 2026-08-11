@@ -153,6 +153,40 @@ describe('mergeManualCues', () => {
   it('id 连续', () => {
     lines.forEach((l, i) => assert.equal(l.id, i));
   });
+
+  // 即兴口语可能十几秒不出现句号 —— 不能只等句号，否则会合出一堵
+  // 糊满播放器的文字墙（真实播客视频里踩过）
+  it('长时间没有句号也会按显示上限切开', () => {
+    const noPunct = Array.from({ length: 20 }, (_, i) => ({
+      text: `word${i} word word word word`,
+      startMs: i * 2000,
+      endMs: i * 2000 + 1800,
+    }));
+    const out = mergeManualCues(noPunct);
+    assert.ok(out.length >= 2, '应该被切成多条');
+    for (const line of out) {
+      // 硬上限在「越线的那条 cue」上触发，所以最大跨度是 12s + 一条 cue
+      assert.ok(
+        line.endMs - line.startMs <= 12_000 + 2000,
+        `单条跨度 ${line.endMs - line.startMs}ms 超过硬上限`,
+      );
+      assert.ok(line.text.length <= 230, '单条字符数应受硬上限约束');
+    }
+  });
+
+  it('软上限之后优先在逗号处断句', () => {
+    const cues = [
+      { text: 'first part of a very long sentence', startMs: 0, endMs: 4000 },
+      { text: 'that keeps going and going,', startMs: 4000, endMs: 8000 },
+      { text: 'then continues after the comma', startMs: 8000, endMs: 10_000 },
+      { text: 'and finally ends here.', startMs: 10_000, endMs: 11_000 },
+    ];
+    const out = mergeManualCues(cues);
+    // 8 秒处超过软上限（7s）且正好在逗号，应该在那里断开
+    assert.equal(out.length, 2);
+    assert.ok(out[0]!.text.endsWith(','));
+    assert.equal(out[0]!.endMs, 8000);
+  });
 });
 
 describe('chunkAsrTokens', () => {

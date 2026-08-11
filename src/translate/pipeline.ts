@@ -143,11 +143,21 @@ export function mapToRenderLines(
   }));
 }
 
+/** 失败统计。退化成英文原文不能无声无息，要能报告出去。 */
+export interface FailureStats {
+  failedBatches: number;
+  lastError: string;
+}
+
 /**
  * 翻一批，失败就拆半重试。
  *
  * 拆半而不是简单重试：失败往往是因为这批太长导致输出被截断，
  * 或者某一条内容让模型返回了不合规的 JSON。拆小之后两种情况都会缓解。
+ *
+ * 最终仍失败时退化成只显示英文原文（总比整段消失强），但必须记进
+ * stats —— 之前这里静默吞掉错误，Key 配错时整片"翻译成功"却全是英文，
+ * 用户完全不知道出了什么事，坏结果还会进缓存。
  */
 async function translateWithSplit(
   batch: Batch,
@@ -156,6 +166,7 @@ async function translateWithSplit(
   settings: Settings,
   allLines: SourceLine[],
   signal: AbortSignal,
+  stats: FailureStats,
   depth = 0,
 ): Promise<RenderLine[]> {
   try {
@@ -166,7 +177,8 @@ async function translateWithSplit(
   } catch (err) {
     if (signal.aborted) throw err;
     if (depth >= 2 || batch.lines.length <= 1) {
-      // 翻不动就退化成只显示原文，总比整段消失强
+      stats.failedBatches++;
+      stats.lastError = err instanceof Error ? err.message : String(err);
       return batch.lines.map((l) => ({
         startMs: l.startMs,
         endMs: l.endMs,
@@ -183,7 +195,7 @@ async function translateWithSplit(
     ];
     const results = await Promise.all(
       halves.map((h) =>
-        translateWithSplit(h, provider, track, settings, allLines, signal, depth + 1),
+        translateWithSplit(h, provider, track, settings, allLines, signal, stats, depth + 1),
       ),
     );
     return results.flat();
@@ -202,12 +214,20 @@ export interface TranslateOptions {
   onProgress: (p: Progress) => void;
 }
 
+export interface TranslateResult {
+  lines: RenderLine[];
+  /** 拆半重试后仍然失败、退化成英文原文的批次数。 */
+  failedBatches: number;
+  lastError: string;
+}
+
 export async function translateTrack(
   opts: TranslateOptions,
-): Promise<RenderLine[]> {
+): Promise<TranslateResult> {
   const { track, settings, provider, signal } = opts;
   const all = track.lines;
   const batches = planBatches(all, settings.llm.batchSize);
+  const stats: FailureStats = { failedBatches: 0, lastError: '' };
 
   const results: RenderLine[][] = new Array(batches.length).fill(null);
   let done = 0;
@@ -239,6 +259,7 @@ export async function translateTrack(
         settings,
         all,
         signal,
+        stats,
       );
       results[batch.index] = lines;
       done++;
@@ -267,8 +288,12 @@ export async function translateTrack(
   opts.onProgress({ done, total: batches.length, status: 'complete' });
 
   // 按时间排序：批次是乱序完成的，但渲染需要有序数组做二分查找
-  return results
-    .filter(Boolean)
-    .flat()
-    .sort((a, b) => a.startMs - b.startMs);
+  return {
+    lines: results
+      .filter(Boolean)
+      .flat()
+      .sort((a, b) => a.startMs - b.startMs),
+    failedBatches: stats.failedBatches,
+    lastError: stats.lastError,
+  };
 }

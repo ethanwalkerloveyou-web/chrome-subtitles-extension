@@ -14,6 +14,7 @@ import {
   Select,
   Slider,
   TextInput,
+  Toggle,
 } from './controls.tsx';
 
 const PROVIDERS: { value: ProviderId; label: string }[] = [
@@ -152,6 +153,19 @@ export default function LlmSection({
             value={llm.effort}
             onChange={(effort) => patch({ effort })}
             options={EFFORTS}
+          />
+        </Field>
+      )}
+
+      {!isAnthropic && (
+        <Field
+          label="关闭思考模式"
+          hint="Qwen3 / DeepSeek-R1 这类模型默认先思考几千 token 再回答，字幕翻译用不上，只会又慢又贵。不支持该参数的供应商会自动忽略"
+        >
+          <Toggle
+            checked={llm.disableThinking}
+            onChange={(disableThinking) => patch({ disableThinking })}
+            label={llm.disableThinking ? '已关闭思考（推荐）' : '允许思考'}
           />
         </Field>
       )}

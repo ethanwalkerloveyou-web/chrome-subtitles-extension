@@ -13,8 +13,11 @@ import {
   mapToRenderLines,
   planBatches,
   prioritize,
+  translateTrack,
 } from '../src/translate/pipeline.ts';
 import { parseModelLines } from '../src/translate/providers.ts';
+import type { TranslationProvider } from '../src/translate/types.ts';
+import { DEFAULT_SETTINGS } from '../src/store/settings.ts';
 import type { SourceLine, SubtitleTrack } from '../src/subtitle/types.ts';
 import { findLineAt } from '../src/render/sync.ts';
 
@@ -314,6 +317,67 @@ describe('parseModelLines', () => {
 
   it('完全不是 JSON 时抛错，交给上层拆半重试', () => {
     assert.throws(() => parseModelLines('抱歉，我无法翻译这段内容'));
+  });
+
+  it('字段里的换行被压掉（英文换空格，中文直接删）', () => {
+    const out = parseModelLines(
+      '{"lines":[{"id":0,"en":"line one\\nline two","zh":"第一行\\n第二行","hard":[]}]}',
+    );
+    assert.equal(out[0]!.en, 'line one line two');
+    assert.equal(out[0]!.zh, '第一行第二行');
+  });
+});
+
+// ---------------------------------------------------------------- 失败统计
+
+describe('translateTrack 失败统计', () => {
+  const track = {
+    videoId: 'v',
+    trackId: 'en',
+    languageCode: 'en',
+    kind: 'manual',
+    lines: lines(6),
+    source: 'intercepted',
+  } as SubtitleTrack;
+
+  const baseOpts = () => ({
+    track,
+    settings: DEFAULT_SETTINGS,
+    signal: new AbortController().signal,
+    currentTimeMs: () => 0,
+    onBatch: () => {},
+    onProgress: () => {},
+  });
+
+  it('供应商一直失败时退化为英文原文，并如实上报失败批次', async () => {
+    const provider: TranslationProvider = {
+      id: 'openai-compatible',
+      translateBatch: () => Promise.reject(new Error('HTTP 401: bad key')),
+    };
+    const result = await translateTrack({ ...baseOpts(), provider });
+
+    // 退化路径：行数不丢，但 zh 是空的
+    assert.equal(result.lines.length, 6);
+    assert.ok(result.lines.every((l) => l.zh === ''));
+    // 关键：失败不能静默 —— 之前这里吞掉错误，坏结果还会被存成 complete
+    assert.ok(result.failedBatches > 0);
+    assert.match(result.lastError, /401/);
+  });
+
+  it('翻译成功时失败数为 0', async () => {
+    const provider: TranslationProvider = {
+      id: 'openai-compatible',
+      translateBatch: (req) =>
+        Promise.resolve(
+          req.lines.map((l) => ({ id: l.id, en: l.text, zh: '译文', hard: [] })),
+        ),
+    };
+    const result = await translateTrack({ ...baseOpts(), provider });
+
+    assert.equal(result.failedBatches, 0);
+    assert.equal(result.lastError, '');
+    assert.equal(result.lines.length, 6);
+    assert.ok(result.lines.every((l) => l.zh === '译文'));
   });
 });
 

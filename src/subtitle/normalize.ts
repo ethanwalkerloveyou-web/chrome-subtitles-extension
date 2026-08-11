@@ -18,15 +18,28 @@ const MAX_CHUNK_MS = 30_000; // 超过这个强制切，避免单批太大
 /** 句尾标点。中英文都覆盖，字幕里偶尔会混。 */
 const SENTENCE_END = /[.!?。！？…]["')\]]?$/;
 
+/** 从句边界（逗号分号等），软上限命中后在这里断，比硬切在词中间强。 */
+const CLAUSE_END = /[,;:，；：]["')\]]?$/;
+
+// 单条字幕的显示上限。即兴口语的句号可以隔十几秒才出现一次，
+// 只按句号切会垒出一堵 30 秒的文字墙，一次糊满整个播放器。
+const SOFT_SPAN_MS = 7_000;
+const HARD_SPAN_MS = 12_000;
+const SOFT_CHARS = 120;
+const HARD_CHARS = 200;
+
 /**
- * 人工字幕：把 cue 合并成完整句子。
+ * 人工字幕：把半句的 cue 合并成适合显示的行。
  *
  * 一条 cue 常常只是半句（"So the key insight" / "here is that attention..."），
- * 直接逐条翻译会丢主语、代词错乱，所以先拼成句子。
+ * 逐条翻译会丢主语、代词错乱，所以要合并。但合并必须有显示上限：
+ * 句尾标点优先；软上限后遇到从句边界（逗号）就切；硬上限直接切 ——
+ * 即兴口语的句号可能十几秒不出现，只等句号会合出一屏糊脸的大块。
  */
 export function mergeManualCues(cues: Token[]): SourceLine[] {
   const lines: SourceLine[] = [];
   let buf: Token[] = [];
+  let chars = 0;
 
   const flush = () => {
     if (buf.length === 0) return;
@@ -44,13 +57,24 @@ export function mergeManualCues(cues: Token[]): SourceLine[] {
       });
     }
     buf = [];
+    chars = 0;
   };
 
   for (const cue of cues) {
     buf.push(cue);
+    chars += cue.text.length + 1;
     const spanMs = cue.endMs - buf[0]!.startMs;
-    // 句尾标点是主要切分依据；超长时强制切，防止一段没有标点的字幕把整段吞掉
-    if (SENTENCE_END.test(cue.text) || spanMs >= MAX_CHUNK_MS) flush();
+
+    const soft = spanMs >= SOFT_SPAN_MS || chars >= SOFT_CHARS;
+    const hard = spanMs >= HARD_SPAN_MS || chars >= HARD_CHARS;
+
+    if (
+      SENTENCE_END.test(cue.text) ||
+      hard ||
+      (soft && CLAUSE_END.test(cue.text))
+    ) {
+      flush();
+    }
   }
   flush();
 

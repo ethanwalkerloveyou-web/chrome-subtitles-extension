@@ -108,7 +108,7 @@ export function handleTranslatePort(port: chrome.runtime.Port): void {
     const collected: RenderLine[] = [];
 
     try {
-      const all = await translateTrack({
+      const result = await translateTrack({
         track,
         settings,
         provider: createProvider(settings.llm),
@@ -122,16 +122,27 @@ export function handleTranslatePort(port: chrome.runtime.Port): void {
         onProgress: (progress) => send({ type: 'PROGRESS', progress }),
       });
 
-      const final = addPinyin(all);
+      const final = addPinyin(result.lines);
       await writeCache({
         key,
         videoId: track.videoId,
         lines: final,
-        status: 'complete',
+        // 有失败批次就只算 partial —— 之前失败也存成 complete，
+        // Key 配错的那次「全英文」结果会永久霸占缓存，修好 Key 也没用
+        status: result.failedBatches === 0 ? 'complete' : 'partial',
         model: activeCredentials(settings.llm).model,
         promptVersion: PROMPT_VERSION,
         updatedAt: Date.now(),
       });
+
+      if (result.failedBatches > 0) {
+        send({
+          type: 'ERROR',
+          message:
+            `${result.failedBatches} 批翻译失败（已用英文原文顶替）：` +
+            result.lastError,
+        });
+      }
     } catch (err) {
       if (abort.signal.aborted) return;
 

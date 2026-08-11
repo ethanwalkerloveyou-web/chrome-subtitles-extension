@@ -65,6 +65,11 @@ content script 的 matches 规则是真的生效的，测的是完整链路。**
 **排查**：F12 → Console 输入 `__ytBilingual`（页面世界直接可用），
 `snapshot` 字段会说明取字幕走到了哪一步、失败在哪。把它整个发出来即可定位。
 
+**翻译很慢？** 用 Qwen3 / DeepSeek-R1 这类思考型模型时，模型会先思考几千
+token 再回答。设置页「关闭思考模式」默认开启，请求里会带
+`enable_thinking: false`；再不行就换非思考型模型（qwen-plus / deepseek-chat），
+或调高「并发请求数」。改完设置无需刷新页面，当前视频会自动重新翻译。
+
 ## 目录结构
 
 ```

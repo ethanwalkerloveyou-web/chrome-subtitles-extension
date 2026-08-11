@@ -194,15 +194,21 @@ class Session {
     this.sync.start();
 
     this.remountTimer = window.setInterval(() => {
+      // 原生字幕的隐藏也要反复补 —— 用户点 CC 按钮 / 播放器重建
+      // 都会让 YouTube 自己的字幕重新冒出来，跟我们的叠成两层
+      adapter.hideNativeSubtitles();
       if (this.overlay?.mounted) return;
       const c = adapter.overlayContainer();
       if (c) this.overlay?.mount(c);
     }, 1000);
   }
 
+  private expectedDisconnect = false;
+
   private startTranslation(track: SubtitleTrack): void {
     const port = chrome.runtime.connect({ name: TRANSLATE_PORT });
     this.port = port;
+    this.expectedDisconnect = false;
     const post = (msg: ToWorker) => port.postMessage(msg);
 
     port.onMessage.addListener((msg: FromWorker) => {
@@ -226,16 +232,31 @@ class Session {
 
     post({ type: 'START', track, settings: this.settings });
 
-    // 把播放位置报给 SW，让它优先翻正在播的那一段
+    // 把播放位置报给 SW，让它优先翻正在播的那一段。
+    // 自己调 disconnect() 不会触发本侧的 onDisconnect，所以这里也要自检
     const timer = window.setInterval(() => {
+      if (this.port !== port) {
+        clearInterval(timer);
+        return;
+      }
       if (this.sync) post({ type: 'TIME', ms: this.sync.currentTimeMs });
     }, 1000);
-    port.onDisconnect.addListener(() => clearInterval(timer));
+    port.onDisconnect.addListener(() => {
+      clearInterval(timer);
+      // 不是我们主动断的就是 SW 崩了 / 扩展被重载了，翻译会停在半路，
+      // 明确说出来，比字幕默默不再更新强
+      if (!this.expectedDisconnect && this.port === port) {
+        log('⚠ 与后台的连接意外断开，翻译中止。刷新页面可恢复');
+        this.overlay?.setStatus('✕ 后台连接断开，刷新页面可恢复');
+      }
+    });
   }
 
   stop(): void {
     this.abort?.abort();
     this.abort = null;
+    this.expectedDisconnect = true;
+    this.adapter?.restoreNativeSubtitles?.();
     this.port?.disconnect();
     this.port = null;
     this.sync?.stop();
@@ -297,13 +318,26 @@ export default defineContentScript({
 
     const session = new Session(settings);
     let enabled = settings.subtitle.enabled;
+    // 模型 / 翻译相关配置一变就整体重来，让「关思考模式」「换模型」
+    // 这类改动立刻生效，不用刷新页面
+    let llmKey = JSON.stringify([settings.llm, settings.translation]);
+
+    // 设置页是边改边存的（填 Key 时每敲一个字都会触发一次变更），
+    // 重启要防抖，等改完稳定一秒再动手
+    let restartTimer = 0;
+    const scheduleRestart = () => {
+      clearTimeout(restartTimer);
+      restartTimer = window.setTimeout(() => void session.start(), 1000);
+    };
 
     watchSettings((next) => {
       session.updateSettings(next);
+      const nextLlmKey = JSON.stringify([next.llm, next.translation]);
       // 总开关翻转时要整体重来（关掉要拆覆盖层，打开要重新取字幕）
-      if (next.subtitle.enabled !== enabled) {
+      if (next.subtitle.enabled !== enabled || nextLlmKey !== llmKey) {
         enabled = next.subtitle.enabled;
-        void session.start();
+        llmKey = nextLlmKey;
+        scheduleRestart();
       }
     });
 
