@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { sendMessage, type TestConnectionResult } from '../../messaging';
+import { sendMessage, type TestConnectionResult } from '../../messaging.ts';
 import {
   MODEL_PRESETS,
   type Effort,
   type LlmSettings,
   type ProviderId,
-} from '../../store/settings';
+} from '../../store/settings.ts';
 import {
   Field,
   ModelCombo,
@@ -13,7 +13,7 @@ import {
   Select,
   Slider,
   TextInput,
-} from './controls';
+} from './controls.tsx';
 
 const PROVIDERS: { value: ProviderId; label: string }[] = [
   { value: 'anthropic', label: 'Anthropic (Claude)' },

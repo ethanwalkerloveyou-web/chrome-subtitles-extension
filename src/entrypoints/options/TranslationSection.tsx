@@ -1,5 +1,5 @@
-import type { TargetLang, TranslationSettings } from '../../store/settings';
-import { Field, Section, Select, TextInput } from './controls';
+import type { TargetLang, TranslationSettings } from '../../store/settings.ts';
+import { Field, Section, Select, TextInput } from './controls.tsx';
 
 const LANGS: { value: TargetLang; label: string }[] = [
   { value: 'zh-CN', label: '简体中文' },

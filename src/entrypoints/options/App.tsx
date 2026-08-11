@@ -8,11 +8,11 @@ import {
   type Settings,
   type SubtitleSettings,
   type TranslationSettings,
-} from '../../store/settings';
-import LlmSection from './LlmSection';
-import Preview from './Preview';
-import SubtitleSection from './SubtitleSection';
-import TranslationSection from './TranslationSection';
+} from '../../store/settings.ts';
+import LlmSection from './LlmSection.tsx';
+import Preview from './Preview.tsx';
+import SubtitleSection from './SubtitleSection.tsx';
+import TranslationSection from './TranslationSection.tsx';
 
 type SaveState = 'loading' | 'idle' | 'saving' | 'saved';
 

@@ -5,7 +5,7 @@
  * 保证「预览看到的」就是「播放时看到的」。
  */
 
-import type { LayerStyle, SubtitleSettings } from '../store/settings';
+import type { LayerStyle, SubtitleSettings } from '../store/settings.ts';
 
 /** #rrggbb + alpha → rgba()。输入非法时退回不透明黑，不抛异常。 */
 export function withAlpha(hex: string, alpha: number): string {

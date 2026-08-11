@@ -10,7 +10,9 @@
     "zip": "wxt zip",
     "compile": "tsc --noEmit",
     "postinstall": "wxt prepare",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "test": "node --test test/*.test.ts",
+    "integration": "node scripts/integration.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

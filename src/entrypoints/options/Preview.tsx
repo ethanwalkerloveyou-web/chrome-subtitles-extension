@@ -4,8 +4,8 @@ import {
   containerStyle,
   hardWordStyle,
   layerStyle,
-} from '../../render/subtitle-style';
-import type { LayerId, SubtitleSettings } from '../../store/settings';
+} from '../../render/subtitle-style.ts';
+import type { LayerId, SubtitleSettings } from '../../store/settings.ts';
 
 /** 两个背景差别很大的示例画面，用来检查描边和背景够不够。 */
 const BACKDROPS = [

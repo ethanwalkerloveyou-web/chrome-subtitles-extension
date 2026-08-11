@@ -1,6 +1,6 @@
 /** content script / options page ↔ service worker 之间的消息协议。 */
 
-import type { LlmSettings } from './store/settings';
+import type { LlmSettings } from './store/settings.ts';
 
 export interface TestConnectionRequest {
   type: 'TEST_CONNECTION';

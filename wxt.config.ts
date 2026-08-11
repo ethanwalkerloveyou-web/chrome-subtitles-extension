@@ -16,5 +16,13 @@ export default defineConfig({
     options_ui: {
       open_in_tab: true,
     },
+    // main-world.js 是要注入到页面自己 JS 环境里执行的，
+    // 页面必须能加载它 —— 不声明这一条，注入会静默失败。
+    web_accessible_resources: [
+      {
+        resources: ['main-world.js'],
+        matches: ['https://www.youtube.com/*'],
+      },
+    ],
   },
 });

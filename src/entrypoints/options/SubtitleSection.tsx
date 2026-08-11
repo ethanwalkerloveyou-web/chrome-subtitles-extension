@@ -6,7 +6,7 @@ import {
   type LayerId,
   type LayerStyle,
   type SubtitleSettings,
-} from '../../store/settings';
+} from '../../store/settings.ts';
 import {
   ColorPicker,
   Field,
@@ -14,7 +14,7 @@ import {
   Select,
   Slider,
   Toggle,
-} from './controls';
+} from './controls.tsx';
 
 const BG_MODES: { value: BackgroundMode; label: string }[] = [
   { value: 'solid', label: '半透明色块' },

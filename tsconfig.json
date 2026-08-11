@@ -3,6 +3,9 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "strict": true,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
+    // 相对导入一律写全 .ts / .tsx 扩展名，这样 node 的原生 TS 加载能直接
+    // 跑 src/ 下的模块，单元测试不需要额外的编译步骤。打包由 Vite 处理。
+    "allowImportingTsExtensions": true
   }
 }

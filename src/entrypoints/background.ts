@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { Request, TestConnectionResult } from '../messaging';
-import { activeCredentials, type LlmSettings } from '../store/settings';
+import type { Request, TestConnectionResult } from '../messaging.ts';
+import { activeCredentials, type LlmSettings } from '../store/settings.ts';
 
 /**
  * 用一次极短的真实请求验证「Key 有效 + 模型可用 + 网络可达」。
